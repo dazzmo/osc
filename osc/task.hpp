@@ -9,7 +9,6 @@
 #include <bopt/variable.hpp>
 #include <casadi/casadi.hpp>
 
-
 #include "osc/common.hpp"
 
 namespace osc {
@@ -21,6 +20,11 @@ struct task_traits {
 
 struct task_attributes {};
 
+/**
+ * @brief State of a given system
+ *
+ * @tparam Vector
+ */
 template <typename Vector>
 struct state {
     typename Vector vector_t;
@@ -35,12 +39,9 @@ struct state {
     vector_t acceleration;
 };
 
-typedef state<Eigen::VectorXd> model_state;
-typedef state<Eigen::Vector3d> task_state;
-
 template <typename Vector>
 struct pid_error {
-    typename Vector vector_t;
+    typedef Vector vector_t;
 
     vector_t positional;
     vector_t integral;
@@ -71,7 +72,7 @@ struct eigen_to_casadi {
     typedef casadi::Matrix<Scalar> casadi_vector_t;
     typedef Eigen::VectorX<casadi::Matrix<Scalar>> eigen_vector_t;
 
-    static inline casadi_vector_t operator()(const eigen_vector_t &v) {
+    static inline casadi_vector_t convert(const eigen_vector_t &v) {
         casadi_vector_t c(v.rows(), 1);
         for (index_type i = 0; i < v.size(); ++i) {
             // Only fill in non-zero entries
@@ -83,37 +84,83 @@ struct eigen_to_casadi {
     }
 };
 
+template <typename Scalar>
+struct task_variables {
+    // Model accelerations
+    std::vector<Scalar> a;
+    // Actuation signals
+    std::vector<Scalar> u;
+    // Constraint forces
+    std::vector<Scalar> lambda;
+};
+
 /**
  * @brief Parameters within an OSC program for a given task
  *
  */
+template <typename Scalar>
 struct task_parameters {
     // Task weighting vector
-    std::vector<bopt::variable> w;
+    std::vector<Scalar> w;
     // Desired task acceleration
-    std::vector<bopt::variable> desired_task_acceleration;
-    std::vector<bopt::variable> q;
-    std::vector<bopt::variable> v;
+    std::vector<Scalar> desired_task_acceleration;
+    // Model configuration
+    std::vector<Scalar> q;
+    // Model velocity
+    std::vector<Scalar> v;
+
+    // Additional parameters that can be added
+    std::vector<Scalar> additional;
 };
 
 /**
- * @brief Expressed as a quadratic cost
+ * @brief The state of a frame in the group SE3
  *
+ * @tparam Scalar
  */
-struct task_program_data {
-    bopt::quadratic_cost<double>::shared_ptr cost;
+template <typename Scalar>
+struct frame_state {
+    // Convert parameters to useable vectors
+    typedef Eigen::VectorX<Scalar> vector_t;
+    typedef pinocchio::SE3Tpl<Scalar> se3_t;
+    typedef pinocchio::MotionTpl<Scalar> motion_t;
+
+    se3_t pos;
+    motion_t vel;
+    motion_t acc;
 };
 
-// /**
-//  * @brief Expressed as a linear constraint and cost
-//  *
-//  */
-// struct task_program_data {
-//     bopt::linear_constraint<double>::shared_ptr cost;
-//     bopt::quadratic_cost<double>::shared_ptr cost;
+template <typename Scalar>
+frame_state<Scalar> get_frame_state(
+    const pinocchio::ModelTpl<Scalar> &model, Eigen::VectorX<Scalar> &q,
+    Eigen::VectorX<Scalar> &v, Eigen::VectorX<Scalar> &a,
+    const std::string &target,
+    const std::string &reference_frame = "universe") {
+    frame_state<Scalar> frame;
 
-//     std::vector<bopt::variable> epsilon;
-// };
+    pinocchio::DataTpl<Scalar> data(model);
+
+    // Compute the kinematic tree state of the system
+    pinocchio::forwardKinematics(model, data, q, v, a);
+    pinocchio::updateFramePlacements(model, data);
+
+    // Target frame wrt world frame
+    se3_t oMf = data.oMf[model.getFrameId(target)];
+    // Reference frame wrt world frame
+    se3_t oMb = data.oMf[model.getFrameId(reference_frame)];
+
+    motion_t o_xvel = pinocchio::getFrameVelocity(
+        model, data, model.getFrameId(target), pinocchio::LOCAL_WORLD_ALIGNED);
+
+    motion_t o_xacc = pinocchio::getFrameClassicalAcceleration(
+        model, data, model.getFrameId(frame), pinocchio::LOCAL_WORLD_ALIGNED);
+
+    frame.pos = oMb.actInv(oMf);
+    frame.vel = oMb.actInv(o_xvel);
+    frame.acc = oMb.actInv(o_xacc);
+
+    return frame;
+}
 
 /**
  * @brief
@@ -125,7 +172,14 @@ class Task {
     typedef std::size_t index_type;
     typedef int integer_type;
 
+    // Convert parameters to useable vectors
+    typedef Eigen::VectorX<sym_t> sym_vector_t;
+    typedef pinocchio::SE3Tpl<sym_t> se3_t;
+    typedef pinocchio::MotionTpl<sym_t> motion_t;
+
     typedef typename Eigen::VectorX<value_type> vector_t;
+
+    Task(const index_type &nx, const index_type &ndx) : pid(nx) {}
 
     Task() : dimension_(index_type(0)) {}
 
@@ -140,68 +194,143 @@ class Task {
     }
 
     virtual integer_type get_state(const model_state &state,
-                                   task_state &task_state) {}
+                                   task_state &task_state) {
+        // Create parameter input
+        std::vector<value_type *> in;
+        in = {state.position.data(), state.velocity.data(),
+              task_state.position.data()};
+        xpos({}, in);
+        xvel({});
+    }
+
     virtual integer_type get_error(const task_state &task_state,
-                                   task_error &error) {}
+                                   task_error &error,
+                                   const value_type &dt = 0.0) {
+        error.positional = task_state.position - reference.position;
+        error.derivative = task_state.velocity - reference.velocity;
+        error.integral += dt * error.positional;
+        return integer_type(0);
+    }
 
     virtual bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() = 0;
-    virtual void add_task_cost(
-        bopt::mathematical_program<value_type> &program) = 0;
+
+    virtual void add_to_program(
+        bopt::mathematical_program<value_type> &program) {
+        auto cost = to_task_cost();
+
+        // program.add_parameter();
+
+        // Bind to program
+        program.add_quadratic_cost(
+            cost, {{}},
+            {{parameters_v.q.data(), parameters_v.v.data(),
+              parameters_v.desired_task_acceleration.data()}});
+    }
 
     // std::vector<value_type> weight() {}
-    task_parameters parameters;
-    pid_gains<Eigen::Vector3d> pid;
+    pid_gains<eigen_vector_t> pid;
+
+    task_parameters<value_type> &parameters() { return parameters_d; }
+
+    task_parameters<value_type> parameters_d;
+
+   protected:
+    // Parameter variables
+    task_parameters<bopt::variable> parameters_v;
 
    private:
+    // Dimension of the task
     index_type dimension_;
 };
 
+/**
+ * @brief Position task
+ *
+ */
 class PositionTask : public Task {
     PositionTask(const model_sym_t &model, const std::string &frame_name,
                  const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
-    
-    void add_task_cost(
-        bopt::mathematical_program<value_type> &program) override;
+
+    const std::string &reference_frame();
+
+    integer_type get_state(const model_state &state,
+                           task_state &task_state) override;
+    integer_type get_error(const task_state &task_state,
+                           task_error &error) override;
+
+    task_state<double> reference;
+
+   private:
+    typename bopt::casadi::expression_evaluator<value_type>
+        expression_evaluator_t;
+    std::unique_ptr<expression_evaluator_t> xpos;
+    std::unique_ptr<expression_evaluator_t> xvel;
+    std::unique_ptr<expression_evaluator_t> xacc;
+};
+
+class OrientationTask : public Task {
+    OrientationTask(const model_sym_t &model, const std::string &frame_name,
+                    const std::string &reference_frame);
+
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
     const std::string &reference_frame();
 
     // void set_target(){}
 
    private:
-    bopt::casadi::expression_evaluator<value_type> x_pos;
-    bopt::casadi::expression_evaluator<value_type> x_vel;
-    bopt::casadi::expression_evaluator<value_type> x_acc;
+    bopt::casadi::expression_evaluator<value_type> xpos;
+    bopt::casadi::expression_evaluator<value_type> xvel;
+    bopt::casadi::expression_evaluator<value_type> xacc;
 };
 
-// class CentreOfMassTask : public Task {
-//     // todo - choose a reference frame
-//     CentreOfMassTask(const model_sym_t &model, const std::string &frame_name,
-//                      const std::string &reference_frame);
+class CentreOfMassTask : public Task {
+    CentreOfMassTask(const model_sym_t &model, const std::string &frame_name,
+                     const std::string &reference_frame);
 
-//     const std::string &reference_frame();
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
-//     // void set_target(){}
-// };
+    const std::string &reference_frame();
 
-// class OrientationTask : public Task {
-//     // todo - choose a reference frame
-//     PositionTask(const model_sym_t &model, const std::string &frame_name,
-//                  const std::string &reference_frame);
+    // void set_target(){}
 
-//     const std::string &reference_frame();
+   private:
+    bopt::casadi::expression_evaluator<value_type> xpos;
+    bopt::casadi::expression_evaluator<value_type> xvel;
+    bopt::casadi::expression_evaluator<value_type> xacc;
+};
 
-//     // void set_target(){}
+class SE3Task : public Task {
+    SE3Task(const model_sym_t &model, const std::string &frame_name,
+            const std::string &reference_frame);
 
-// };
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
-// class SE3Task : public Task {
-//     // todo - choose a reference frame
-//     PositionTask(const model_sym_t &model, const std::string &frame_name,
-//                  const std::string &reference_frame);
+    const std::string &reference_frame();
 
-//     const std::string &reference_frame();
-//     // void set_target(){}
-// };
+    // void set_target(){}
+
+   private:
+    bopt::casadi::expression_evaluator<value_type> xpos;
+    bopt::casadi::expression_evaluator<value_type> xvel;
+    bopt::casadi::expression_evaluator<value_type> xacc;
+};
+
+class JointTrackingTask : public Task {
+    JointTrackingTask(const model_sym_t &model);
+
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
+
+    task_state<double> reference;
+
+   private:
+    typename bopt::casadi::expression_evaluator<value_type>
+        expression_evaluator_t;
+    std::unique_ptr<expression_evaluator_t> xpos;
+    std::unique_ptr<expression_evaluator_t> xvel;
+    std::unique_ptr<expression_evaluator_t> xacc;
+};
+
 }  // namespace osc

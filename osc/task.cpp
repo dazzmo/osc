@@ -6,74 +6,154 @@
 
 namespace osc {
 
-bopt::quadratic_cost<PositionTask::value_type>::shared_ptr
-PositionTask::to_task_cost() {
-    // Convert parameters to useable vectors
-    typedef Eigen::VectorX<sym_t> sym_vector_t;
-    typedef pinocchio::SE3Tpl<sym_t> se3_t;
-    typedef pinocchio::MotionTpl<sym_t> motion_t;
-
+PositionTask::PositionTask(const model_sym_t &model, const std::string &target,
+                           const std::string &reference_frame) {
     sym_vector_t q;
     sym_vector_t v;
     sym_vector_t a;
 
-    sym_vector_t xacc_a;
+    // Compute frame state
+    frame_state<sym_t> frame =
+        get_frame_state(model, q, v, a, target, reference_frame);
+
+    // Create expression evaluators
+    sym_t q_s = eigen_to_casadi<sym_t>::convert(q);
+    sym_t v_s = eigen_to_casadi<sym_t>::convert(v);
+    sym_t a_s = eigen_to_casadi<sym_t>::convert(a);
+
+    sym_t xpos_s = eigen_to_casadi<sym_t>::convert(frame.pos.translation());
+    sym_t xvel_s = eigen_to_casadi<sym_t>::convert(frame.vel.linear());
+    sym_t xacc_s = eigen_to_casadi<sym_t>::convert(frame.acc.linear());
+
+    xpos = std::make_unique<expression_evaluator_t>(xpos_s, {q_s, v_s}, {});
+    xvel = std::make_unique<expression_evaluator_t>(xvel_s, {q_s, v_s}, {});
+    xacc = std::make_unique<expression_evaluator_t>(xacc_s, {q_s, v_s}, {});
+}
+
+bopt::quadratic_cost<PositionTask::value_type>::shared_ptr
+PositionTask::to_task_cost() {
+    sym_vector_t q;
+    sym_vector_t v;
+    sym_vector_t a;
+
     sym_vector_t xacc_d;
 
     sym_vector_t w;
 
     model_sym_t model;
-    data_sym_t data;
 
-    // Compute the task
-    pinocchio::forwardKinematics(model, data, q, v, a);
-    pinocchio::updateFramePlacements(model, data);
+    // Compute frame state
+    // todo - set a = 0
+    frame_state<sym_t> frame =
+        get_frame_state(model, q, v, a, "", reference_frame);
 
-    // Compute the acceleration of the frame
-    std::string frame = "root";
-    std::string reference = "root";
-    motion_t xacc_a_o = pinocchio::getFrameClassicalAcceleration(
-        model, data, model.getFrameId(frame), pinocchio::WORLD);
+    sym_vector_t dxacc = frame.acc.linear() - xacc_d;
 
-    // Get frame of system
-    se3_t oMb = model.frames[model.getFrameId(reference)];
+    // Compute weighted squared norm
+    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
 
-    // Convert to desired reference frame
-    motion_t xacc_a_b = oMb.actInv(xacc_a_o);
+    sym_t a_sym;
+    sym_t q_sym, v_sym;
 
-    sym_vector_t diff = xacc_a_b.toVector() - xacc_d;
-    
-    sym_t cost = (diff).dot(diff);
-
-    return bopt::casadi::quadratic_cost<value_type>::create(cost, a, q);
+    return bopt::casadi::quadratic_cost<value_type>::create(cost, a_sym, {q_sym, v_sym});
 }
 
-void PositionTask::add_task_cost(
-    bopt::mathematical_program<value_type> &program) {
-    auto cost = to_task_cost();
+// CentreOfMassTask::CentreOfMassTask(const model_sym_t &model,
+//                                    const std::string &target,
+//                                    const std::string &reference_frame) {
+//     sym_vector_t q;
+//     sym_vector_t v;
+//     sym_vector_t a;
 
-    // Bind to program
-    program.add_quadratic_cost(cost, {{}},
-                               {{parameters.q.data(), parameters.v.data(),
-                                 parameters.desired_task_acceleration.data()}});
-}
+//     pinocchio::DataTpl<sym_t> data(model);
 
-integer_type PositionTask::get_state(const model_state &state,
-                                     task_state &task_state) {
-    // Evaluate functions
-    x_pos({state.position.data(), state.velocity.data()},
-          {task_state.position.data()});
-    x_vel({state.position.data(), state.velocity.data()},
-          {task_state.velocity.data()});
+//     // Compute frame state
+//     pinocchio::forwardKinematics(model, data, q, v, a);
+//     pinocchio::updateFramePlacements(model, data);
 
-    return integer_type(0);
-}
+//     pinocchio::centerOfMass(model, data, q, v, a, false);
+//     // Get data for centre of mass
+//     sym_vector_t com = data.com[0], com_vel = data.vcom[0], com_acc =
+//     data.acom[0];
 
-integer_type PositionTask::get_error(const task_state &task_state,
-                                     task_error &error) {
-    error.positional = task_state.position - reference.position;
-    error.derivative = task_state.velocity - reference.velocity;
-    return integer_type(0);
-}
+//     // todo - convert to local frame
+
+//     // Create expression evaluators
+//     sym_t q_s = eigen_to_casadi<sym_t>::convert(q);
+//     sym_t v_s = eigen_to_casadi<sym_t>::convert(v);
+//     sym_t a_s = eigen_to_casadi<sym_t>::convert(a);
+
+//     sym_t com_s =
+//     eigen_to_casadi<sym_t>::convert(frame.pos.translation()); sym_t
+//     com_vel_s = eigen_to_casadi<sym_t>::convert(com_vel); sym_t com_acc_s
+//     = eigen_to_casadi<sym_t>::convert(com_acc);
+
+//     xpos = std::make_unique<expression_evaluator_t>(com_s, {q_s, v_s}, {});
+//     xvel = std::make_unique<expression_evaluator_t>(com_vel_s, {q_s, v_s},
+//     {}); xacc = std::make_unique<expression_evaluator_t>(com_acc_s, {q_s,
+//     v_s}, {});
+// }
+
+// OrientationTask::OrientationTask(const model_sym_t &model,
+//                                  const std::string &target,
+//                                  const std::string &reference_frame) {
+//     sym_vector_t q;
+//     sym_vector_t v;
+//     sym_vector_t a;
+
+//     // Compute frame state
+//     frame_state<sym_t> frame =
+//         get_frame_state(model, q, v, a, target, reference_frame);
+
+//     // Create expression evaluators
+//     sym_t q_s = eigen_to_casadi<sym_t>::convert(q);
+//     sym_t v_s = eigen_to_casadi<sym_t>::convert(v);
+//     sym_t a_s = eigen_to_casadi<sym_t>::convert(a);
+
+//     sym_t xpos_s = eigen_to_casadi<sym_t>::convert(
+//         frame.pos.rotation());
+//     sym_t xvel_s = eigen_to_casadi<sym_t>::convert(frame.vel.angular());
+//     sym_t xacc_s = eigen_to_casadi<sym_t>::convert(frame.acc.angular());
+
+//     xpos = std::make_unique<expression_evaluator_t>(xpos_s, {q_s, v_s}, {});
+//     xvel = std::make_unique<expression_evaluator_t>(xvel_s, {q_s, v_s}, {});
+//     xacc = std::make_unique<expression_evaluator_t>(xacc_s, {q_s, v_s}, {});
+// }
+
+// SE3Task::SE3Task(const model_sym_t &model, const std::string &target,
+//                  const std::string &reference_frame) {
+//     sym_vector_t q;
+//     sym_vector_t v;
+//     sym_vector_t a;
+
+//     // Compute frame state
+//     frame_state<sym_t> frame =
+//         get_frame_state(model, q, v, a, target, reference_frame);
+
+//     // Create expression evaluators
+//     sym_t q_s = eigen_to_casadi<sym_t>::convert(q);
+//     sym_t v_s = eigen_to_casadi<sym_t>::convert(v);
+//     sym_t a_s = eigen_to_casadi<sym_t>::convert(a);
+
+//     // sym_t xpos_s = eigen_to_casadi<sym_t>::convert(frame.pos.to()); //
+//     // todo - make this a 7d vector
+//     sym_t xvel_s = eigen_to_casadi<sym_t>::convert(frame.vel.toVector());
+//     sym_t xacc_s = eigen_to_casadi<sym_t>::convert(frame.acc.toVector());
+
+//     xpos = std::make_unique<expression_evaluator_t>(xpos_s, {q_s, v_s}, {});
+//     xvel = std::make_unique<expression_evaluator_t>(xvel_s, {q_s, v_s}, {});
+//     xacc = std::make_unique<expression_evaluator_t>(xacc_s, {q_s, v_s}, {});
+// }
+
+// integer_type SE3Task::get_error(const task_state &task_state,
+//                                 task_error &error) {
+//     // Compute difference through logarithmic map
+//     pinocchio::SE3 p;
+//     pinocchio::log6(p);
+
+//     error.positional =  - reference.position;
+//     error.derivative = task_state.velocity - reference.velocity;
+//     return integer_type(0);
+// }
 
 }  // namespace osc
