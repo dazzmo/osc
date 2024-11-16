@@ -14,6 +14,7 @@ task.cpp
 SET(${PROJECT_NAME}_LIBRARIES
 Eigen3::Eigen
 casadi
+pinocchio::pinocchio
 bopt
 glog
 )
@@ -37,11 +38,11 @@ target_include_directories(${PROJECT_NAME}
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-unused-parameter -pipe)
 
-add_library(bopt::bopt ALIAS ${PROJECT_NAME})
+add_library(osc::osc ALIAS ${PROJECT_NAME})
 
 ## First of all, we need to install the library itself.
 install(TARGETS ${PROJECT_NAME}
-    EXPORT bopt-export
+    EXPORT osc-export
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     # Perhaps use this, instead of installing include dir

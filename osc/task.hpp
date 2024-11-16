@@ -8,6 +8,8 @@
 #include <bopt/costs.hpp>
 #include <bopt/variable.hpp>
 #include <casadi/casadi.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
 
 #include "osc/common.hpp"
 
@@ -17,6 +19,10 @@ template <class T>
 struct task_traits {
     typedef typename T::value_type value_type;
     typedef typename T::index_type index_type;
+    typedef typename T::integer_type integer_type;
+
+    typedef typename T::task_state_t task_state_t;
+    typedef typename T::task_error_t task_error_t;
     typedef typename T::reference_t reference_t;
 };
 
@@ -29,7 +35,7 @@ struct task_attributes {};
  */
 template <typename VectorType>
 struct state {
-    state(const std::size_t &nq, const std::size_t &nv = nq)
+    state(const std::size_t &nq, const std::size_t &nv)
         : position(nq), velocity(nv), acceleration(nv) {}
 
     VectorType position;
@@ -38,8 +44,8 @@ struct state {
 };
 
 template <typename VectorType>
-struct error {
-    state(const std::size_t &sz)
+struct pid_error {
+    pid_error(const std::size_t &sz)
         : positional(sz), integral(sz), derivative(sz) {}
 
     VectorType positional;
@@ -79,13 +85,21 @@ struct eigen_to_casadi {
 };
 
 template <typename Scalar>
+struct eigen_to_std_vector {
+    static inline std::vector<Scalar> convert(
+        const eigen_vector_tpl_t<Scalar> &v) {
+        return std::vector<Scalar>(v.data(), v.data() + v.rows() * v.cols());
+    }
+};
+
+template <typename VectorType>
 struct task_variables {
     // Model accelerations
-    std::vector<Scalar> a;
+    VectorType a;
     // Actuation signals
-    std::vector<Scalar> u;
+    VectorType u;
     // Constraint forces
-    std::vector<Scalar> lambda;
+    VectorType lambda;
 };
 
 /**
@@ -132,6 +146,9 @@ frame_state<Scalar> get_frame_state(
     const std::string &reference_frame = "universe") {
     frame_state<Scalar> frame;
 
+    typedef pinocchio::SE3Tpl<Scalar> se3_t;
+    typedef pinocchio::MotionTpl<Scalar> motion_t;
+
     pinocchio::DataTpl<Scalar> data(model);
 
     // Compute the kinematic tree state of the system
@@ -144,10 +161,10 @@ frame_state<Scalar> get_frame_state(
     se3_t oMb = data.oMf[model.getFrameId(reference_frame)];
 
     motion_t o_xvel = pinocchio::getFrameVelocity(
-        model, data, model.getFrameId(target), pinocchio::LOCAL_WORLD_ALIGNED);
+        model, data, model.getFrameId(target), pinocchio::WORLD);
 
     motion_t o_xacc = pinocchio::getFrameClassicalAcceleration(
-        model, data, model.getFrameId(frame), pinocchio::LOCAL_WORLD_ALIGNED);
+        model, data, model.getFrameId(target), pinocchio::WORLD);
 
     frame.pos = oMb.actInv(oMf);
     frame.vel = oMb.actInv(o_xvel);
@@ -167,16 +184,8 @@ class Task {
     typedef std::size_t index_type;
     typedef int integer_type;
 
-    typedef pinocchio::SE3 se3_t;
-    typedef pinocchio::SE3Tpl<sym_t> se3_sym_t;
-
-    typedef pinocchio::MotionTpl<sym_t> motion_sym_t;
-
-    typedef state<eigen_vector_t> state_t;
-    typedef state<eigen_vector_sym_t> state_sym_t;
-
-    typedef state_t task_state_t;
-    typedef error<eigen_vector_t> task_error_t;
+    typedef state<eigen_vector_t> model_state_t;
+    typedef pid_error<eigen_vector_t> task_error_t;
 
     Task(const index_type &dim) : dimension_(dim), pid(dim) {}
 
@@ -184,36 +193,31 @@ class Task {
 
     index_type dimension() const { return dimension_; }
 
-    virtual integer_type get_task_state(const state_t &state,
-                                   task_state_t &task_state) = 0;
-
-    virtual integer_type get_task_error(const task_state_t &task_state,
-                                   task_error_t &error,
-                                   const value_type &dt = 0.0) {
-        error.positional = task_state.position - reference.position;
-        error.derivative = task_state.velocity - reference.velocity;
-        error.integral += dt * error.positional;
-        return integer_type(0);
-    }
-
     virtual bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() = 0;
 
-    virtual void add_to_program(
-        bopt::mathematical_program<value_type> &program) {
+    void add_to_program(bopt::mathematical_program<value_type> &program) {
         auto cost = to_task_cost();
 
         // program.add_parameter();
 
         // Bind to program
         program.add_quadratic_cost(
-            cost, {{}},
-            {{parameters_v.q.data(), parameters_v.v.data(),
-              parameters_v.desired_task_acceleration.data()}});
+            cost,
+            // Variables
+            {eigen_to_std_vector<bopt::variable>::convert(variables.a)},
+            // Parameters
+            {eigen_to_std_vector<bopt::variable>::convert(parameters_v.q),
+             eigen_to_std_vector<bopt::variable>::convert(parameters_v.v),
+             eigen_to_std_vector<bopt::variable>::convert(parameters_v.w),
+             eigen_to_std_vector<bopt::variable>::convert(
+                 parameters_v.desired_task_acceleration),
+             eigen_to_std_vector<bopt::variable>::convert(
+                 parameters_v.additional)});
     }
 
     /**
      * @brief PID gains for task tracking
-     * 
+     *
      */
     pid_gains<eigen_vector_t> pid;
 
@@ -225,6 +229,7 @@ class Task {
     task_parameters<eigen_vector_t> &parameters() { return parameters_d; }
 
    protected:
+    task_variables<eigen_vector_var_t> variables;
     // Parameter variables
     task_parameters<eigen_vector_t> parameters_d;
     task_parameters<eigen_vector_var_t> parameters_v;
@@ -239,20 +244,32 @@ class Task {
  *
  */
 class PositionTask : public Task {
+   public:
     PositionTask(const model_sym_t &model, const std::string &frame_name,
                  const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
-    struct reference {
+    struct task_state {
         eigen_vector_t position;
         eigen_vector_t velocity;
     };
 
-    typedef reference reference_t;
+    typedef task_state task_state_t;
+    typedef task_state_t reference_t;
 
-    integer_type get_error(const task_state_t &task_state, task_error_t &error,
-                           const value_type &dt = 0.0) {
+    integer_type get_task_state(const model_state_t &model_state,
+                                task_state_t &task_state) const {
+        // (*xpos)({model_state.position, model_state.velocity},
+        //         {task_state.position.data()});
+        // (*xvel)({model_state.position, model_state.velocity},
+        //         {task_state.velocity.data()});
+        return integer_type(0);
+    }
+
+    integer_type get_task_error(const task_state_t &task_state,
+                                task_error_t &error,
+                                const value_type &dt = 0.0) const {
         error.positional = task_state.position - reference.position;
         error.derivative = task_state.velocity - reference.velocity;
         error.integral += dt * error.positional;
@@ -260,9 +277,10 @@ class PositionTask : public Task {
     }
 
     reference_t reference;
+    string_t reference_frame;
 
    private:
-    typename bopt::casadi::expression_evaluator<value_type>
+    typedef bopt::casadi::expression_evaluator<value_type>
         expression_evaluator_t;
     std::unique_ptr<expression_evaluator_t> xpos;
     std::unique_ptr<expression_evaluator_t> xvel;
@@ -270,29 +288,46 @@ class PositionTask : public Task {
 };
 
 class OrientationTask : public Task {
+   public:
     OrientationTask(const model_sym_t &model, const std::string &frame_name,
                     const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
-    const std::string &reference_frame();
-
-    struct reference {
-        eigen_vector_t rotation;
+    struct task_state {
+        eigen_matrix_t rotation;
         eigen_vector_t velocity;
     };
 
-    typedef reference reference_t;
+    typedef task_state task_state_t;
+    typedef task_state_t reference_t;
 
-    integer_type get_error(const task_state_t &task_state, task_error_t &error,
-                           const value_type &dt = 0.0) {
-        error.positional = task_state.position - reference.rotation;
-        error.derivative = task_state.velocity - reference.velocity;
+    integer_type get_task_state(const model_state_t &model_state,
+                                task_state_t &task_state) const {
+        // (*xpos)({model_state.position, model_state.velocity},
+        //         {task_state.position.data()});
+        // (*xvel)({model_state.position, model_state.velocity},
+        //         {task_state.velocity.data()});
+        return integer_type(0);
+    }
+
+    integer_type get_task_error(const task_state_t &task_state,
+                                task_error_t &error,
+                                const value_type &dt = 0.0) const {
+        Eigen::Matrix<double, 3, 3> Jlog;
+        error.positional =
+            pinocchio::log3(reference.rotation.inverse() * task_state.rotation);
+        pinocchio::Jlog3(reference.rotation.inverse() * task_state.rotation,
+                         Jlog);
+
+        error.derivative = Jlog * task_state.velocity;
+
         error.integral += dt * error.positional;
         return integer_type(0);
     }
 
     reference_t reference;
+    string_t reference_frame;
 
     // void set_target(){}
 
@@ -303,6 +338,7 @@ class OrientationTask : public Task {
 };
 
 class CentreOfMassTask : public PositionTask {
+   public:
     CentreOfMassTask(const model_sym_t &model, const std::string &frame_name,
                      const std::string &reference_frame);
 
@@ -310,7 +346,14 @@ class CentreOfMassTask : public PositionTask {
 
     const std::string &reference_frame();
 
-    // void set_target(){}
+    integer_type get_task_state(const model_state_t &model_state,
+                                task_state_t &task_state) const {
+        // (*xpos)({model_state.position, model_state.velocity},
+        //         {task_state.position.data()});
+        // (*xvel)({model_state.position, model_state.velocity},
+        //         {task_state.velocity.data()});
+        return integer_type(0);
+    }
 
    private:
     bopt::casadi::expression_evaluator<value_type> xpos;
@@ -319,31 +362,51 @@ class CentreOfMassTask : public PositionTask {
 };
 
 class SE3Task : public Task {
+   public:
     SE3Task(const model_sym_t &model, const std::string &frame_name,
             const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
-    const std::string &reference_frame();
+    typedef pinocchio::SE3 se3_t;
+    typedef pinocchio::Motion twist_t;
 
-    struct reference {
+    struct task_state {
         se3_t pose;
         twist_t twist;
     };
 
-    typedef reference reference_t;
+    typedef task_state task_state_t;
+    typedef task_state_t reference_t;
 
-    integer_type get_error(const task_state_t &task_state, task_error_t &error,
-                           const value_type &dt = 0.0) {
-        error.positional = task_state.position - reference.pose;
-        error.derivative = task_state.velocity - reference.twist;
+    integer_type get_task_state(const model_state_t &model_state,
+                                task_state_t &task_state) const {
+        // (*xpos)({model_state.position, model_state.velocity},
+        //         {task_state.position.data()});
+        // (*xvel)({model_state.position, model_state.velocity},
+        //         {task_state.velocity.data()});
+        return integer_type(0);
+    }
+
+    integer_type get_task_error(const task_state_t &task_state,
+                                task_error_t &error,
+                                const value_type &dt = 0.0) const {
+        Eigen::Matrix<double, 6, 6> Jlog;
+        error.positional =
+            pinocchio::log6(reference.pose.actInv(task_state.pose)).toVector();
+        pinocchio::Jlog6(reference.pose.actInv(task_state.pose), Jlog);
+
+        error.derivative = Jlog * task_state.twist.toVector();
+
         error.integral += dt * error.positional;
         return integer_type(0);
     }
 
     reference_t reference;
 
-    // void set_target(){}
+    string_t reference_frame;
+
+
 
    private:
     bopt::casadi::expression_evaluator<value_type> xpos;
@@ -356,17 +419,26 @@ class JointTrackingTask : public Task {
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
 
-    struct reference {
+    struct task_state {
         eigen_vector_t joint_position;
         eigen_vector_t joint_velocity;
     };
 
-    typedef reference reference_t;
+    typedef task_state task_state_t;
+    typedef task_state_t reference_t;
 
-    integer_type get_error(const task_state_t &task_state, task_error_t &error,
-                           const value_type &dt = 0.0) {
-        error.positional = task_state.position - reference.joint_position;
-        error.derivative = task_state.velocity - reference.joint_velocity;
+    integer_type get_task_state(const model_state_t &model_state,
+                                task_state_t &task_state) const {
+        task_state.joint_position = model_state.position;
+        task_state.joint_velocity = model_state.velocity;
+        return integer_type(0);
+    }
+
+    integer_type get_task_error(const task_state_t &task_state,
+                                task_error_t &error,
+                                const value_type &dt = 0.0) const {
+        error.positional = task_state.joint_position - reference.joint_position;
+        error.derivative = task_state.joint_position - reference.joint_velocity;
         error.integral += dt * error.positional;
         return integer_type(0);
     }
@@ -374,7 +446,7 @@ class JointTrackingTask : public Task {
     reference_t reference;
 
    private:
-    typename bopt::casadi::expression_evaluator<value_type>
+    typedef bopt::casadi::expression_evaluator<value_type>
         expression_evaluator_t;
     std::unique_ptr<expression_evaluator_t> xpos;
     std::unique_ptr<expression_evaluator_t> xvel;

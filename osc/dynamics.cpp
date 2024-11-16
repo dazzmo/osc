@@ -17,22 +17,23 @@ Dynamics::Dynamics(model_sym_t &model) {
     dynamics_ = tau;
 }
 
-void Dynamics::register_contact_point(const ContactTask &task) {
-    // Compute the Jacobian of the contact frame
+// void Dynamics::register_contact_point(const ContactTask &task) {
+//     // Compute the Jacobian of the contact frame
 
-    sym_t jac;
-    sym_t lam;
+//     sym_t jac;
+//     sym_t lam;
 
-    dynamics -= sym_t::mtimes(jac.T(), lam);
-}
+//     dynamics -= sym_t::mtimes(jac.T(), lam);
+// }
 
-void Dynamics::register_actuation(const sym_t &B, const sym_t &u,
-                                  const std::vector<sym_t> &p) {
+void Dynamics::register_actuation(const eigen_matrix_sym_t &B,
+                                  const eigen_vector_sym_t &u,
+                                  const eigen_vector_sym_t &p) {
     // Set control variables
     // variables_.u = u;
 
     // Add B(q) u
-    dynamics -= sym_t::mtimes(B, u);
+    dynamics_ -= B * u;
 }
 
 void Dynamics::register_additional_dynamics(const sym_t &f,
@@ -43,19 +44,19 @@ void Dynamics::to_constraint() {
 
     // Create linear constraint
 
-    // Create vector
-    sym_t x = sym_t::vertcat({variables_.a, variables_.u, variables_.lambda});
-    sym_vector_t p = {};
-    p.push_back(parameters_.q);
-    p.push_back(parameters_.v);
-    p.insert(p.end(), parameters_.other.begin(), parameters_.other.end());
+    // // Create vector
+    // sym_t x = sym_t::vertcat({variables_.a, variables_.u, variables_.lambda});
+    // sym_vector_t p = {};
+    // p.push_back(parameters_.q);
+    // p.push_back(parameters_.v);
+    // p.insert(p.end(), parameters_.other.begin(), parameters_.other.end());
 
-    bopt::casadi::linear_constraint<double>::create(dynamics, x, p,
-                                                    bopt::bound_type::Equality);
+    // bopt::casadi::linear_constraint<double>::create(dynamics, x, p,
+    //                                                 bopt::bound_type::Equality);
 }
 
-void Dynamics::add_constraint_to_program() {
-    // program.add_linear_constraint(to_constraint(), {}, {});
-}
+// void Dynamics::add_constraint_to_program() {
+//     // program.add_linear_constraint(to_constraint(), {}, {});
+// }
 
 }  // namespace osc

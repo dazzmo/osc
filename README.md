@@ -25,8 +25,10 @@
 
 ### Prerequisites
 osc requires the following third-party libraries in order to be built and installed.
-* [Boost](https://www.boost.org/) (Version 1.70 or higher)
+* [boost](https://www.boost.org/) (Version 1.70 or higher)
 * [bopt]()
+* [pinocchio]()
+* [casadi]()
 
 For testing purposes we have (this is later be a toggle-able option):
 * [googletest](https://github.com/google/googletest)

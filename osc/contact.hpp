@@ -25,9 +25,6 @@ struct contact_point_parameters {
     std::vector<Scalar> friction_force_lower_bound;
 };
 
-typedef task_state contact_point_state;
-typedef task_error contact_point_error;
-
 class ContactPoint {
    public:
     typedef double value_type;
@@ -42,14 +39,11 @@ class ContactPoint {
 
     index_type dimension() const { return dimension_; }
 
-    virtual integer_type get_state(contact_point_state &state) {}
-    virtual integer_type get_error(contact_point_error &error) {}
-
     contact_point_parameters<bopt::variable> parameters_v;
     
     contact_point_parameters<value_type> &parameters() { return parameters_d; }
     
-    void add_to_program();
+    // void add_to_program();
 
     contact_point_parameters<value_type> parameters_d;
 

@@ -1,11 +1,8 @@
-
-
+#pragma once
 #include "osc/common.hpp"
 #include "osc/contact.hpp"
 
 namespace osc {
-
-struct dynamics_parameters {};
 
 struct dynamics_constraint_handler {
     void add(const sym_t &jacobian, const sym_t &lambda) {}
@@ -21,40 +18,44 @@ struct dynamics_constraint_handler {
     sym_t parameters;
 };
 
-template<typename Scalar>
+template <typename VectorType>
 struct dynamics_variables {
-    std::vector<Scalar> a;
-    std::vector<Scalar> u;
-    std::vector<Scalar> lambda;
+    VectorType a;
+    VectorType u;
+    VectorType lambda;
 };
 
-template <typename Scalar>
+template <typename VectorType>
 struct dynamics_parameters {
-    std::vector<Scalar> q;
-    std::vector<Scalar> v;
-
-    std::vector<Scalar> other;
+    VectorType q;
+    VectorType v;
+    VectorType additional;
 };
 
 class Dynamics {
    public:
     Dynamics(model_sym_t &model);
 
-    void register_contact_point(const ContactTask &task);
+    // void register_contact_point(const ContactP &task);
 
-    void register_actuation(const sym_t &u);
+    void register_actuation(const eigen_matrix_sym_t &B,
+                            const eigen_vector_sym_t &u,
+                            const eigen_vector_sym_t &p);
 
     void to_constraint();
 
     void add_constraint();
 
+    void register_additional_dynamics(const sym_t &f,
+                                      const std::vector<sym_t> &p);
+
     // dynamics_parameters<bopt::variable> parameters;
     // dynamics_parameters<double> parameters_d;
 
    private:
-    dynamics_variables<sym_t> variables_;
-    dynamics_parameters<sym_t> parameters_;
-    sym_t dynamics;
+    dynamics_variables<eigen_vector_sym_t> variables_;
+    dynamics_parameters<eigen_vector_sym_t> parameters_;
+    eigen_vector_sym_t dynamics_;
 };
 
 }  // namespace osc

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <bopt/program.h>
 
 #include "osc/contact.hpp"
@@ -12,7 +14,7 @@ class OSC {
 
     void init() {
         // All tasks added, finalise dynamics constraint
-        dynamics_->add_constraint(program);
+        // dynamics_->add_constraint(program);
     }
 
     /**
@@ -36,24 +38,43 @@ class OSC {
     // void get_orientation_task(const string_t &task);
     // void get_se3_task(const string_t &task);
 
+    // void add_contact_point(const ContactTask &point) {
+    //     dynamics_->register_contact_point(point);
 
+    //     // point.add_to_program(program);
 
-    void add_contact_point(const ContactTask &point) {
-        dynamics_->register_contact_point(point);
+    //     contacts_.push_back(point);
+    // }
 
-        // point.add_to_program(program);
-
-        contacts_.push_back(point);
-    }
-
-    void get_contact_point(const string_t &name) {
-
-    }
+    void get_contact_point(const string_t &name) {}
 
     bopt::mathematical_program<double> program;
 
     // Solver instance
     // bopt::solvers::qpoases_solver_instance qp_solver;
+
+    template <class TaskType>
+    void update_task(TaskType &task) {
+        // Set weighting
+        // program.set_parameter(task.parameters().w, task.parameters().w);
+        typedef typename task_traits<TaskType>::task_state_t task_state_t;
+        typedef typename task_traits<TaskType>::task_error_t task_error_t;
+        typedef typename task_traits<TaskType>::reference_t reference_t;
+
+        Task::model_state_t model_state(1, 1);
+
+        task_state_t task_state;
+        // Evaluate task error
+        task.get_task_state(model_state, task_state);
+        task_error_t task_error(task.dimension());
+        task.get_task_error(task_state, task_error);
+
+        // Set desired acceleration as PID output
+        task.parameters().desired_task_acceleration =
+            task.pid.compute(task_error);
+        // program.set_parameter(task.parameters().desired_task_acceleration,
+        // task.parameters().q);
+    }
 
    private:
     typedef std::string string_t;
@@ -66,15 +87,16 @@ class OSC {
 
     std::vector<Task> get_all_tasks() {
         std::vector<Task> all;
-        all.assign(all.end(), position_tasks_.begin(), position_tasks_.end());
-        all.assign(all.end(), orientation_tasks_.begin(),
-                   orientation_tasks_.end());
-        all.assign(all.end(), se3_tasks_.begin(), se3_tasks_.end());
+        // all.assign(all.end(), position_tasks_.begin(),
+        // position_tasks_.end()); all.assign(all.end(),
+        // orientation_tasks_.begin(),
+        //            orientation_tasks_.end());
+        // all.assign(all.end(), se3_tasks_.begin(), se3_tasks_.end());
 
         return all;
     }
 
-    std::unique_ptr<Dynamics> dynamics_;
+    // std::unique_ptr<Dynamics> dynamics_;
 };
 
 }  // namespace osc
