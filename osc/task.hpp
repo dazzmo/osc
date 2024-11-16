@@ -2,6 +2,9 @@
 
 #include <bopt/program.h>
 
+#define GLOG_USE_GLOG_EXPORT
+#include <glog/logging.h>
+
 #include <Eigen/Core>
 #include <bopt/ad/casadi/casadi.hpp>
 #include <bopt/constraints.hpp>
@@ -145,6 +148,14 @@ frame_state<Scalar> get_frame_state(
     const std::string &target,
     const std::string &reference_frame = "universe") {
     frame_state<Scalar> frame;
+
+    // Ensure the model has the provided frames
+    if(model.getFrameId(target) == model.frames.size()) {
+        assert("No target frame");
+    }
+    if(model.getFrameId(reference_frame) == model.frames.size()) {
+        assert("No reference frame");
+    }
 
     typedef pinocchio::SE3Tpl<Scalar> se3_t;
     typedef pinocchio::MotionTpl<Scalar> motion_t;

@@ -8,9 +8,10 @@ namespace osc {
 
 PositionTask::PositionTask(const model_sym_t &model, const std::string &target,
                            const std::string &reference_frame) {
-    eigen_vector_sym_t q;
-    eigen_vector_sym_t v;
-    eigen_vector_sym_t a;
+    eigen_vector_sym_t q = create_symbolic_vector("q", model.nq);
+    eigen_vector_sym_t v = create_symbolic_vector("v", model.nv);
+    eigen_vector_sym_t a(model.nv);
+    a.setZero();
 
     // Compute frame state
     frame_state<sym_t> frame =
@@ -19,19 +20,17 @@ PositionTask::PositionTask(const model_sym_t &model, const std::string &target,
     // Create expression evaluators
     sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
     sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
-    sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
 
     sym_t xpos_s =
         eigen_to_casadi<sym_elem_t>::convert(frame.pos.translation());
     sym_t xvel_s = eigen_to_casadi<sym_elem_t>::convert(frame.vel.linear());
     sym_t xacc_s = eigen_to_casadi<sym_elem_t>::convert(frame.acc.linear());
 
-    xpos = std::make_unique<expression_evaluator_t>(xpos_s, q_s,
-                                                    sym_vector_t({q_s, v_s}));
-    xvel = std::make_unique<expression_evaluator_t>(xvel_s, q_s,
-                                                    sym_vector_t({q_s, v_s}));
-    xacc = std::make_unique<expression_evaluator_t>(xacc_s, q_s,
-                                                    sym_vector_t({q_s, v_s}));
+    LOG(INFO) << xpos_s;
+
+    xpos = std::make_unique<expression_evaluator_t>(xpos_s, sym_vector_t({q_s, v_s}));
+    xvel = std::make_unique<expression_evaluator_t>(xvel_s, sym_vector_t({q_s, v_s}));
+    xacc = std::make_unique<expression_evaluator_t>(xacc_s, sym_vector_t({q_s, v_s}));
 }
 
 bopt::quadratic_cost<PositionTask::value_type>::shared_ptr

@@ -6,6 +6,7 @@ find_package(bopt REQUIRED)
 
 # Collect source files
 SET(${PROJECT_NAME}_SOURCES
+common.cpp
 dynamics.cpp
 osc.cpp
 task.cpp

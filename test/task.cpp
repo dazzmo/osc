@@ -1,10 +1,26 @@
 
+#include "osc/task.hpp"
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "osc/task.hpp"
+#include <pinocchio/parsers/urdf.hpp>
 
 TEST(Task, Construct) {
+    // Load a model
+
+
+    // You should change here to set up your own URDF file or just pass it as an
+    // argument of this example.
+    const std::string urdf_filename = "test/cassie.urdf";
+
+    // Load the urdf model
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdf_filename, model);
+    // Create symbolic representation
+    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
+
+    osc::PositionTask task(model_sym, "RightFootBack", "universe");
 }
 
 int main(int argc, char **argv) {
