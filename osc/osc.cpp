@@ -2,13 +2,20 @@
 
 namespace osc {
 
-
 void OSC::loop() {
     // Update references for all tasks
     // program.set_parameter(q, q);
     // program.set_parameter(v, v);
 
     for (auto &task : tasks_.position_tasks_) {
+        update_task(*task.second);
+    }
+
+    for (auto &task : tasks_.orientation_tasks_) {
+        update_task(*task.second);
+    }
+
+    for (auto &task : tasks_.se3_tasks_) {
         update_task(*task.second);
     }
 

@@ -23,6 +23,8 @@ struct osc_task_maps {
     using task_map_t = std::unordered_map<string_t, std::shared_ptr<TaskType>>;
 
     task_map_t<PositionTask> position_tasks_;
+    task_map_t<OrientationTask> orientation_tasks_;
+    task_map_t<SE3Task> se3_tasks_;
 };
 
 template <typename VectorType>
@@ -74,12 +76,22 @@ class OSC {
     void add_position_task(const std::string &name,
                            std::shared_ptr<PositionTask> &task) {
         tasks_.position_tasks_.insert({name, task});
-        add_to_program(*task);
+        add_task_to_program(*task);
+    }
+
+    void add_orientation_task(const std::string &name,
+                              std::shared_ptr<OrientationTask> &task) {
+        tasks_.orientation_tasks_.insert({name, task});
+        add_task_to_program(*task);
+    }
+
+    void add_se3_task(const std::string &name, std::shared_ptr<SE3Task> &task) {
+        tasks_.se3_tasks_.insert({name, task});
+        add_task_to_program(*task);
     }
 
     template <class TaskType>
-
-    void add_to_program(const TaskType &task) {
+    void add_task_to_program(const TaskType &task) {
         auto cost = task.to_task_cost(model);
 
         // program.add_parameter();
@@ -105,25 +117,6 @@ class OSC {
                  task.parameters_v.desired_task_acceleration)});
     }
 
-    // void add_position_task(const string_t &name,
-    //                        const PositionTask::shared_ptr &task);
-    // void add_orientation_task(const string_t &name,
-    //                        const OrientationTask::shared_ptr &task);
-    // void add_se3_task(const string_t &name,
-    //                        const SE3Task::shared_ptr &task);
-
-    // void get_position_task(const string_t &task);
-    // void get_orientation_task(const string_t &task);
-    // void get_se3_task(const string_t &task);
-
-    // void add_contact_point(const ContactTask &point) {
-    //     dynamics_->register_contact_point(point);
-
-    //     // point.add_to_program(program);
-
-    //     contacts_.push_back(point);
-    // }
-
     void get_contact_point(const string_t &name) {}
 
     bopt::mathematical_program<double> program;
@@ -142,19 +135,22 @@ class OSC {
         typedef typename task_traits<TaskType>::task_error_t task_error_t;
         typedef typename task_traits<TaskType>::reference_t reference_t;
 
-        Task::model_state_t model_state(1, 1);
+        // Task::model_state_t model_state(1, 1);
 
-        task_state_t task_state;
-        // Evaluate task error
-        task.get_task_state(model_state, task_state);
-        task_error_t task_error(task.dimension());
-        task.get_task_error(task_state, task_error);
+        // task_state_t task_state;
+        // // Evaluate task error
+        // task.get_task_state(model_state, task_state);
+        // task_error_t task_error(task.dimension());
+        // task.get_task_error(task_state, task_error);
 
-        // Set desired acceleration as PID output
-        task.parameters().desired_task_acceleration =
-            task.pid.compute(task_error);
-        // program.set_parameter(task.parameters().desired_task_acceleration,
-        // task.parameters().q);
+        // // Set desired acceleration as PID output
+        // task.parameters().desired_task_acceleration =
+        //     task.pid.compute(task_error);
+
+        for (std::size_t i = 0; i < task.parameters().w.size(); ++i) {
+            program.set_parameter(task.parameters_v.w[i],
+                                  task.parameters().w[i]);
+        }
     }
 
    private:

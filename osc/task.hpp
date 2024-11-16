@@ -185,6 +185,7 @@ frame_state<Scalar> get_frame_state(
  */
 class Task {
     friend class OSC;
+
    public:
     // Typedefs
     typedef double value_type;
@@ -291,7 +292,7 @@ class PositionTask : public Task {
 
 class OrientationTask : public Task {
    public:
-    OrientationTask(const model_sym_t &model, const std::string &frame_name,
+    OrientationTask(const model_sym_t &model, const std::string &target_frame,
                     const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
@@ -330,13 +331,14 @@ class OrientationTask : public Task {
     }
 
     reference_t reference;
+    string_t target_frame;
     string_t reference_frame;
 
-    // void set_target(){}
-
    private:
-    bopt::casadi::expression_evaluator<value_type> xpos;
-    bopt::casadi::expression_evaluator<value_type> xvel;
+    typedef bopt::casadi::expression_evaluator<value_type>
+        expression_evaluator_t;
+    std::unique_ptr<expression_evaluator_t> xpos;
+    std::unique_ptr<expression_evaluator_t> xvel;
 };
 
 class CentreOfMassTask : public PositionTask {
@@ -365,7 +367,7 @@ class CentreOfMassTask : public PositionTask {
 
 class SE3Task : public Task {
    public:
-    SE3Task(const model_sym_t &model, const std::string &frame_name,
+    SE3Task(const model_sym_t &model, const std::string &target_frame,
             const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
@@ -404,14 +406,16 @@ class SE3Task : public Task {
         error.integral += dt * error.positional;
         return integer_type(0);
     }
-
+    
     reference_t reference;
-
+    string_t target_frame;
     string_t reference_frame;
 
    private:
-    bopt::casadi::expression_evaluator<value_type> xpos;
-    bopt::casadi::expression_evaluator<value_type> xvel;
+    typedef bopt::casadi::expression_evaluator<value_type>
+        expression_evaluator_t;
+    std::unique_ptr<expression_evaluator_t> xpos;
+    std::unique_ptr<expression_evaluator_t> xvel;
 };
 
 class JointTrackingTask : public Task {
