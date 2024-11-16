@@ -10,8 +10,9 @@ typedef pinocchio::ModelTpl<sym_t> model_sym_t;
 typedef pinocchio::DataTpl<sym_t> data_sym_t;
 
 template<typename T>
-using Eigen::VectorX<T> eigen_vector_tpl_t;
+using eigen_vector_tpl_t = Eigen::VectorX<T>;
 
+typedef eigen_vector_tpl_t<bopt::variable> eigen_vector_var_t;
 typedef eigen_vector_tpl_t<sym_t> eigen_vector_sym_t;
 typedef eigen_vector_tpl_t<double> eigen_vector_t;
 
