@@ -36,4 +36,7 @@ typedef std::shared_ptr<model_sym_t> model_sym_shared_ptr_t;
 eigen_vector_sym_t create_symbolic_vector(const std::string &name,
                                           const std::size_t &sz);
 
+eigen_vector_var_t create_variable_vector(const std::string &name,
+                                          const std::size_t &sz);
+
 }  // namespace osc

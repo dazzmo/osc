@@ -8,9 +8,11 @@ void OSC::loop() {
     // program.set_parameter(q, q);
     // program.set_parameter(v, v);
 
-    for (auto &task : position_tasks_) {
-        update_task(task.second);
+    for (auto &task : tasks_.position_tasks_) {
+        update_task(*task.second);
     }
+
+    // visitor.loop();
 
     // for (auto &contact : contacts_) {
     //     if (contact.in_contact) {

@@ -106,7 +106,7 @@ struct task_variables {
 };
 
 /**
- * @brief Parameters within an OSC program for a given task
+ * @brief Parameters specific to a given task
  *
  */
 template <typename VectorType>
@@ -115,11 +115,6 @@ struct task_parameters {
     VectorType w;
     // Desired task acceleration
     VectorType desired_task_acceleration;
-    // Model configuration
-    VectorType q;
-    // Model velocity
-    VectorType v;
-
     // Additional parameters that can be added
     VectorType additional;
 };
@@ -150,10 +145,10 @@ frame_state<Scalar> get_frame_state(
     frame_state<Scalar> frame;
 
     // Ensure the model has the provided frames
-    if(model.getFrameId(target) == model.frames.size()) {
+    if (model.getFrameId(target) == model.frames.size()) {
         assert("No target frame");
     }
-    if(model.getFrameId(reference_frame) == model.frames.size()) {
+    if (model.getFrameId(reference_frame) == model.frames.size()) {
         assert("No reference frame");
     }
 
@@ -189,6 +184,7 @@ frame_state<Scalar> get_frame_state(
  *
  */
 class Task {
+    friend class OSC;
    public:
     // Typedefs
     typedef double value_type;
@@ -198,33 +194,26 @@ class Task {
     typedef state<eigen_vector_t> model_state_t;
     typedef pid_error<eigen_vector_t> task_error_t;
 
-    Task(const index_type &dim) : dimension_(dim), pid(dim) {}
+    Task(const index_type &dim, const index_type &model_nq,
+         const index_type &model_nv)
+        : dimension_(dim), model_nq_(model_nq), model_nv_(model_nv), pid(dim) {
+        // Create parameters
+        parameters_v.w = create_variable_vector("w", dim);
+        parameters_d.w = eigen_vector_t::Ones(dim);
+
+        parameters_v.desired_task_acceleration =
+            create_variable_vector("xacc_d", dim);
+        parameters_d.desired_task_acceleration = eigen_vector_t::Zero(dim);
+    }
 
     Task() : dimension_(index_type(0)), pid(index_type(0)) {}
 
     index_type dimension() const { return dimension_; }
+    index_type model_nq() const { return model_nq_; }
+    index_type model_nv() const { return model_nv_; }
 
-    virtual bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() = 0;
-
-    void add_to_program(bopt::mathematical_program<value_type> &program) {
-        auto cost = to_task_cost();
-
-        // program.add_parameter();
-
-        // Bind to program
-        program.add_quadratic_cost(
-            cost,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(variables.a)},
-            // Parameters
-            {eigen_to_std_vector<bopt::variable>::convert(parameters_v.q),
-             eigen_to_std_vector<bopt::variable>::convert(parameters_v.v),
-             eigen_to_std_vector<bopt::variable>::convert(parameters_v.w),
-             eigen_to_std_vector<bopt::variable>::convert(
-                 parameters_v.desired_task_acceleration),
-             eigen_to_std_vector<bopt::variable>::convert(
-                 parameters_v.additional)});
-    }
+    virtual bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
+        const model_sym_t &model) const = 0;
 
     /**
      * @brief PID gains for task tracking
@@ -240,7 +229,6 @@ class Task {
     task_parameters<eigen_vector_t> &parameters() { return parameters_d; }
 
    protected:
-    task_variables<eigen_vector_var_t> variables;
     // Parameter variables
     task_parameters<eigen_vector_t> parameters_d;
     task_parameters<eigen_vector_var_t> parameters_v;
@@ -248,6 +236,8 @@ class Task {
    private:
     // Dimension of the task
     index_type dimension_;
+    index_type model_nq_;
+    index_type model_nv_;
 };
 
 /**
@@ -259,7 +249,8 @@ class PositionTask : public Task {
     PositionTask(const model_sym_t &model, const std::string &frame_name,
                  const std::string &reference_frame);
 
-    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
+        const model_sym_t &model) const override;
 
     struct task_state {
         eigen_vector_t position;
@@ -288,6 +279,7 @@ class PositionTask : public Task {
     }
 
     reference_t reference;
+    string_t target_frame;
     string_t reference_frame;
 
    private:
@@ -295,7 +287,6 @@ class PositionTask : public Task {
         expression_evaluator_t;
     std::unique_ptr<expression_evaluator_t> xpos;
     std::unique_ptr<expression_evaluator_t> xvel;
-    std::unique_ptr<expression_evaluator_t> xacc;
 };
 
 class OrientationTask : public Task {
@@ -303,7 +294,8 @@ class OrientationTask : public Task {
     OrientationTask(const model_sym_t &model, const std::string &frame_name,
                     const std::string &reference_frame);
 
-    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
+        const model_sym_t &model) const override;
 
     struct task_state {
         eigen_matrix_t rotation;
@@ -345,7 +337,6 @@ class OrientationTask : public Task {
    private:
     bopt::casadi::expression_evaluator<value_type> xpos;
     bopt::casadi::expression_evaluator<value_type> xvel;
-    bopt::casadi::expression_evaluator<value_type> xacc;
 };
 
 class CentreOfMassTask : public PositionTask {
@@ -353,7 +344,8 @@ class CentreOfMassTask : public PositionTask {
     CentreOfMassTask(const model_sym_t &model, const std::string &frame_name,
                      const std::string &reference_frame);
 
-    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
+        const model_sym_t &model) const override;
 
     const std::string &reference_frame();
 
@@ -369,7 +361,6 @@ class CentreOfMassTask : public PositionTask {
    private:
     bopt::casadi::expression_evaluator<value_type> xpos;
     bopt::casadi::expression_evaluator<value_type> xvel;
-    bopt::casadi::expression_evaluator<value_type> xacc;
 };
 
 class SE3Task : public Task {
@@ -377,7 +368,8 @@ class SE3Task : public Task {
     SE3Task(const model_sym_t &model, const std::string &frame_name,
             const std::string &reference_frame);
 
-    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
+        const model_sym_t &model) const override;
 
     typedef pinocchio::SE3 se3_t;
     typedef pinocchio::Motion twist_t;
@@ -417,18 +409,16 @@ class SE3Task : public Task {
 
     string_t reference_frame;
 
-
-
    private:
     bopt::casadi::expression_evaluator<value_type> xpos;
     bopt::casadi::expression_evaluator<value_type> xvel;
-    bopt::casadi::expression_evaluator<value_type> xacc;
 };
 
 class JointTrackingTask : public Task {
     JointTrackingTask(const model_sym_t &model);
 
-    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost() override;
+    bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
+        const model_sym_t &model) const override;
 
     struct task_state {
         eigen_vector_t joint_position;

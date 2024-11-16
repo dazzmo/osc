@@ -7,10 +7,11 @@
 namespace osc {
 
 PositionTask::PositionTask(const model_sym_t &model, const std::string &target,
-                           const std::string &reference_frame) {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model.nq);
-    eigen_vector_sym_t v = create_symbolic_vector("v", model.nv);
-    eigen_vector_sym_t a(model.nv);
+                           const std::string &reference_frame)
+    : Task(3, model.nq, model.nv), target_frame(target), reference_frame(reference_frame) {
+    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
+    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
+    eigen_vector_sym_t a(model_nv());
     a.setZero();
 
     // Compute frame state
@@ -24,46 +25,39 @@ PositionTask::PositionTask(const model_sym_t &model, const std::string &target,
     sym_t xpos_s =
         eigen_to_casadi<sym_elem_t>::convert(frame.pos.translation());
     sym_t xvel_s = eigen_to_casadi<sym_elem_t>::convert(frame.vel.linear());
-    sym_t xacc_s = eigen_to_casadi<sym_elem_t>::convert(frame.acc.linear());
 
-    LOG(INFO) << xpos_s;
-
-    xpos = std::make_unique<expression_evaluator_t>(xpos_s, sym_vector_t({q_s, v_s}));
-    xvel = std::make_unique<expression_evaluator_t>(xvel_s, sym_vector_t({q_s, v_s}));
-    xacc = std::make_unique<expression_evaluator_t>(xacc_s, sym_vector_t({q_s, v_s}));
+    xpos = std::make_unique<expression_evaluator_t>(xpos_s,
+                                                    sym_vector_t({q_s, v_s}));
+    xvel = std::make_unique<expression_evaluator_t>(xvel_s,
+                                                    sym_vector_t({q_s, v_s}));
 }
 
 bopt::quadratic_cost<PositionTask::value_type>::shared_ptr
-PositionTask::to_task_cost() {
-    eigen_vector_sym_t q;
-    eigen_vector_sym_t v;
-    eigen_vector_sym_t a;
+PositionTask::to_task_cost(const model_sym_t &model) const {
+    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
+    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
+    eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
 
-    eigen_vector_sym_t xacc_d;
-
-    eigen_vector_sym_t w;
-
-    model_sym_t model;
+    eigen_vector_sym_t w = create_symbolic_vector("w", 3);
+    eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", 3);
 
     // Compute frame state
-    // todo - set a = 0
     frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, "", reference_frame);
+        get_frame_state(model, q, v, a, target_frame, reference_frame);
 
     eigen_vector_sym_t dxacc = frame.acc.linear() - xacc_d;
-
-    // Compute weighted squared norm
-    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
 
     sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
     sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
     sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
     sym_t w_s = eigen_to_casadi<sym_elem_t>::convert(w);
+    sym_t xacc_d_s = eigen_to_casadi<sym_elem_t>::convert(xacc_d);
 
-    // todo - work out why this is
-    return nullptr;
-    // bopt::casadi::quadratic_cost<value_type>::create(
-    // cost, a_s, sym_vector_t({q_s, v_s, w_s}));
+    // Compute weighted squared norm
+    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
+
+    return bopt::casadi::quadratic_cost<value_type>::create(
+        cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s}));
 }
 
 // CentreOfMassTask::CentreOfMassTask(const model_sym_t &model,
