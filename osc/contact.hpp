@@ -1,6 +1,7 @@
 #pragma once
 
 #include "osc/task.hpp"
+#include "osc/constraint.hpp"
 
 namespace osc {
 
@@ -20,7 +21,7 @@ struct contact_point_parameters {
     VectorType friction_force_lower_bound;
 };
 
-class ContactPoint {
+class ContactPoint : public HolonomicConstraint {
    public:
     friend class OSC;
 
@@ -32,10 +33,7 @@ class ContactPoint {
 
     ContactPoint(const index_type &dim, const index_type &model_nq,
                  const index_type &model_nv, const string_t &target)
-        : dimension_(dim),
-          model_nq_(model_nq),
-          model_nv_(model_nv),
-          target_frame(target) {
+        : HolonomicConstraint(dim, model_nq, model_nv), target_frame(target) {
         parameters_v.epsilon = create_variable_vector("eps", dimension());
         parameters_d.epsilon = eigen_vector_t::Zero(dimension());
 
@@ -72,8 +70,8 @@ class ContactPoint {
      * @brief Provides the contact Jacobian for the system
      *
      */
-    eigen_matrix_sym_t contact_jacobian(const model_sym_t &model,
-                                        const eigen_vector_sym_t &q) const {
+    eigen_matrix_sym_t constraint_jacobian(
+        const model_sym_t &model, const eigen_vector_sym_t &q) const override {
         pinocchio::DataTpl<sym_t> data(model);
 
         // Compute the kinematic tree state of the system
@@ -92,11 +90,6 @@ class ContactPoint {
 
     string_t target_frame;
 
-    index_type dimension() const { return dimension_; }
-
-    index_type model_nq() const { return model_nq_; }
-    index_type model_nv() const { return model_nv_; }
-
     contact_point_parameters<eigen_vector_t, value_type> &parameters() {
         return parameters_d;
     }
@@ -104,11 +97,6 @@ class ContactPoint {
    protected:
     contact_point_parameters<eigen_vector_t, value_type> parameters_d;
     contact_point_parameters<eigen_vector_var_t, bopt::variable> parameters_v;
-
-   private:
-    index_type dimension_;
-    index_type model_nq_;
-    index_type model_nv_;
 };
 
 class ContactPoint3D : public ContactPoint {

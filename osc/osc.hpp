@@ -69,11 +69,6 @@ class OSC {
         for (std::size_t i = 0; i < model.nv; ++i) {
             program.add_parameter(parameters.v[i]);
         }
-
-        // Set up variables for the dynamics
-        dynamics_.variables_v_.a = variables.a;
-        dynamics_.parameters_v_.q = parameters.q;
-        dynamics_.parameters_v_.v = parameters.v;
     }
 
     void init() {
@@ -140,16 +135,8 @@ class OSC {
 
     template <class ContactType>
     void add_contact_point_to_program(const ContactType &contact) {
-        // Create new variables
-        eigen_vector_var_t lambda =
-            create_variable_vector("lambda", contact.dimension());
-
-        for (std::size_t i = 0; i < lambda.size(); ++i) {
-            program.add_variable(lambda[i]);
-        }
-
-        // Add to dynamics
-        dynamics_.add_constraint(contact, lambda);
+        // Add constraint components
+        add_holonomic_constraint_to_program(contact);
 
         // Parameters
         for (std::size_t i = 0; i < contact.parameters_v.epsilon.size(); ++i) {
@@ -175,7 +162,7 @@ class OSC {
         program.add_linear_constraint(
             friction_cone,
             // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(lambda)},
+            {eigen_to_std_vector<bopt::variable>::convert(variables.lambda.bottomRows(contact.dimension()))},
             // contact-specific parameters
             {eigen_to_std_vector<bopt::variable>::convert(
                  contact.parameters_v.n),
@@ -214,8 +201,19 @@ class OSC {
         return nullptr;
     }
 
-    void add_holonomic_constraint(const std::string &name,
-                                  std::shared_ptr<ContactPoint3D> &contact) {
+    void add_holonomic_constraint_to_program(const HolonomicConstraint &constraint) {
+        // Create new variables
+        eigen_vector_var_t lambda =
+            create_variable_vector("lambda", constraint.dimension());
+
+        variables.lambda.conservativeResize(variables.lambda.size() +
+                                            lambda.size());
+        variables.lambda.bottomRows(lambda.size()) = lambda;
+
+        // Add lamba to variables
+        for (std::size_t i = 0; i < lambda.size(); ++i) {
+            program.add_variable(lambda[i]);
+        }
     }
 
     void add_dynamics_to_program(Dynamics &dynamics) {
@@ -303,7 +301,7 @@ class OSC {
 
     Dynamics dynamics_;
 
-    model_sym_t &model;
+    model_sym_t & model;
 
     // task_map_t<OrientationTask> orientation_tasks_;
     // task_map_t<SE3Task> se3_tasks_;

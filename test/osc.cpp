@@ -127,6 +127,27 @@ TEST(OSC, AddContact3D) {
     LOG(INFO) << program.program.p();
 }
 
+TEST(OSC, DynamicsWithContact) {
+    // Load a model
+    const std::string urdf_filename = "test/cassie.urdf";
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdf_filename, model);
+    // Create symbolic representation
+    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
+
+    // Create a task
+    LOG(INFO) << "Creating";
+    std::shared_ptr<osc::ContactPoint3D> left_foot =
+        std::make_shared<osc::ContactPoint3D>(model_sym, "LeftFootBack");
+
+    osc::OSC program(model_sym);
+
+    program.add_contact_point_3d("left_foot", left_foot);
+    program.init();
+
+    program.loop();
+}
+
 int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);
     google::ParseCommandLineFlags(&argc, &argv, true);

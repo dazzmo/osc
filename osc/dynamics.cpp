@@ -28,7 +28,6 @@ Dynamics::to_constraint() {
     sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(variables_s_.a);
 
     sym_t u_s = eigen_to_casadi<sym_elem_t>::convert(variables_s_.u);
-
     sym_t f_s = eigen_to_casadi<sym_elem_t>::convert(variables_s_.lambda);
 
     sym_t dyn_s = eigen_to_casadi<sym_elem_t>::convert(dynamics_);
@@ -52,15 +51,12 @@ void Dynamics::register_actuation(const eigen_matrix_sym_t &B,
 
     // Set control variables
     variables_s_.u = u;
-
-    // Add variables
-    variables_v_.u = u_v;
 }
 
-void Dynamics::add_constraint(const ContactPoint &contact,
+void Dynamics::add_constraint(const HolonomicConstraint &constraint,
                               const eigen_vector_var_t &lambda_v) {
     // Add to dynamics
-    auto J = contact.contact_jacobian(model, parameters_s_.q);
+    auto J = constraint.constraint_jacobian(model, parameters_s_.q);
 
     eigen_vector_sym_t lambda =
         create_symbolic_vector("lambda", lambda_v.size());
@@ -70,11 +66,6 @@ void Dynamics::add_constraint(const ContactPoint &contact,
     variables_s_.lambda.conservativeResize(variables_s_.lambda.size() +
                                            lambda.size());
     variables_s_.lambda.bottomRows(lambda.size()) << lambda;
-
-    // Add variables to the variable list
-    variables_v_.lambda.conservativeResize(variables_v_.lambda.size() +
-                                           lambda_v.size());
-    variables_v_.lambda.bottomRows(lambda_v.size()) << lambda_v;
 }
 
 }  // namespace osc
