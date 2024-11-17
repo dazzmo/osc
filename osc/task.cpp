@@ -40,8 +40,8 @@ PositionTask::to_task_cost(const model_sym_t &model) const {
     eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
     eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
 
-    eigen_vector_sym_t w = create_symbolic_vector("w", 3);
-    eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", 3);
+    eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
+    eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
 
     // Compute frame state
     frame_state<sym_t> frame =
@@ -214,8 +214,8 @@ SE3Task::SE3Task(const model_sym_t &model, const std::string &target,
     sym_t x_s = eigen_to_casadi<sym_elem_t>::convert(x);
     sym_t xvel_s = eigen_to_casadi<sym_elem_t>::convert(frame.vel.toVector());
 
-    xpos = std::make_unique<expression_evaluator_t>(x_s,
-                                                    sym_vector_t({q_s, v_s}));
+    xpos =
+        std::make_unique<expression_evaluator_t>(x_s, sym_vector_t({q_s, v_s}));
     xvel = std::make_unique<expression_evaluator_t>(xvel_s,
                                                     sym_vector_t({q_s, v_s}));
 }

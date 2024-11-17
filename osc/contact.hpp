@@ -2,51 +2,127 @@
 
 #include "osc/task.hpp"
 
-/**
- * @brief Strict equality constraint for contact
- *
- */
-struct contact_task_program_data {
-    bopt::linear_constraint<double>::shared_ptr constraint;
-    bopt::linear_constraint<double>::shared_ptr friction_cone;
-    bopt::bounding_box_constraint<double>::shared_ptr friction_force_bounds;
-};
+namespace osc {
 
-template <typename Scalar>
+struct contact_point_traits {};
+
+template <typename VectorType, typename ScalarType>
 struct contact_point_parameters {
-    std::vector<Scalar> epsilon;
+    VectorType epsilon;
 
-    Scalar mu;
+    ScalarType mu;
 
-    std::vector<Scalar> normal;
-    std::vector<Scalar> tangent;
+    VectorType n;
+    VectorType t;
+    VectorType b;
 
-    std::vector<Scalar> friction_force_upper_bound;
-    std::vector<Scalar> friction_force_lower_bound;
+    VectorType friction_force_upper_bound;
+    VectorType friction_force_lower_bound;
 };
 
 class ContactPoint {
    public:
+    friend class OSC;
+
     typedef double value_type;
     typedef std::size_t index_type;
     typedef int integer_type;
 
     typedef typename Eigen::VectorX<value_type> vector_t;
 
-    ContactPoint() : dimension_(index_type(0)) {}
+    ContactPoint(const index_type &dim, const index_type &model_nq,
+                 const index_type &model_nv, const string_t &target)
+        : dimension_(dim), model_nq_(model_nq), model_nv_(model_nv), target_frame(target) {
+        parameters_v.epsilon = create_variable_vector("eps", dimension());
+        parameters_d.epsilon = eigen_vector_t::Zero(dimension());
+
+        parameters_v.n = create_variable_vector("n", dimension());
+        parameters_d.n = eigen_vector_t::Zero(dimension());
+
+        parameters_v.t = create_variable_vector("t", dimension());
+        parameters_d.t = eigen_vector_t::Zero(dimension());
+
+        parameters_v.b = create_variable_vector("b", dimension());
+        parameters_d.b = eigen_vector_t::Zero(dimension());
+
+        parameters_v.friction_force_upper_bound =
+            create_variable_vector("friction_force_upper_bound", dimension());
+        parameters_d.friction_force_upper_bound =
+            eigen_vector_t::Zero(dimension());
+
+        parameters_v.friction_force_lower_bound =
+            create_variable_vector("friction_force_lower_bound", dimension());
+        parameters_d.friction_force_lower_bound =
+            eigen_vector_t::Zero(dimension());
+    }
+
+    virtual bopt::linear_constraint<value_type>::shared_ptr
+    create_friction_constraint(const model_sym_t &model) const = 0;
+
+    virtual bopt::bounding_box_constraint<value_type>::shared_ptr
+    create_friction_bound_constraint(const model_sym_t &model) const = 0;
+
+    virtual bopt::linear_constraint<value_type>::shared_ptr
+    create_no_slip_constraint(const model_sym_t &model) const = 0;
+
+    /**
+     * @brief Provides the contact Jacobian for the system
+     *
+     */
+    sym_t contact_jacobian(const model_sym_t &model, const sym_t &q) {
+        // pinocchio::DataTpl<Scalar> data(model);
+
+        // // Compute the kinematic tree state of the system
+        // pinocchio::forwardKinematics(model, data, q, v, a);
+        // pinocchio::updateFramePlacements(model, data);
+
+        // pinocchio::computeJacobian
+
+        sym_t J;
+
+        //   casadi::SX J = sym_t::jacobian(task->vel_sym(),
+        //   symbolic_terms_->qvel());
+        return J;
+    }
 
     bool in_contact = false;
 
+    string_t target_frame;
+
     index_type dimension() const { return dimension_; }
 
-    contact_point_parameters<bopt::variable> parameters_v;
-    
-    contact_point_parameters<value_type> &parameters() { return parameters_d; }
-    
-    // void add_to_program();
+    index_type model_nq() const { return model_nq_; }
+    index_type model_nv() const { return model_nv_; }
 
-    contact_point_parameters<value_type> parameters_d;
+    contact_point_parameters<eigen_vector_t, value_type> &parameters() {
+        return parameters_d;
+    }
+
+   protected:
+    contact_point_parameters<eigen_vector_t, value_type> parameters_d;
+    contact_point_parameters<eigen_vector_var_t, bopt::variable> parameters_v;
 
    private:
     index_type dimension_;
+    index_type model_nq_;
+    index_type model_nv_;
 };
+
+class ContactPoint3D : public ContactPoint {
+   public:
+    ContactPoint3D(const model_sym_t &model, const string_t &target)
+        : ContactPoint(3, model.nq, model.nv, target) {}
+
+    bopt::linear_constraint<value_type>::shared_ptr create_friction_constraint(
+        const model_sym_t &model) const override;
+
+    bopt::bounding_box_constraint<value_type>::shared_ptr
+    create_friction_bound_constraint(const model_sym_t &model) const override;
+
+    bopt::linear_constraint<value_type>::shared_ptr create_no_slip_constraint(
+        const model_sym_t &model) const override;
+
+   private:
+};
+
+}  // namespace osc

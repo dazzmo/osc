@@ -71,7 +71,6 @@ TEST(OSC, AddOrientationTask) {
     program.loop();
 }
 
-
 TEST(OSC, AddSE3Task) {
     // Load a model
     const std::string urdf_filename = "test/cassie.urdf";
@@ -92,6 +91,36 @@ TEST(OSC, AddSE3Task) {
     pelvis->parameters().w << 1.0, 2.0, 3.0, 1.0, 1.0, 1.0;
 
     program.loop();
+}
+
+TEST(OSC, AddContact3D) {
+    // Load a model
+    const std::string urdf_filename = "test/cassie.urdf";
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdf_filename, model);
+    // Create symbolic representation
+    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
+
+    // Create a task
+    LOG(INFO) << "Creating";
+    std::shared_ptr<osc::ContactPoint3D> left_foot =
+        std::make_shared<osc::ContactPoint3D>(model_sym, "LeftFootBack");
+
+    osc::OSC program(model_sym);
+
+
+    LOG(INFO) << "Adding";
+    program.add_contact_point_3d("left_foot", left_foot);
+    
+
+    // Test if variables can be set
+    left_foot->parameters().n = Eigen::Vector3d::UnitZ();
+    left_foot->parameters().t = Eigen::Vector3d::UnitX();
+    left_foot->parameters().b = Eigen::Vector3d::UnitY();
+
+    program.loop();
+
+    LOG(INFO) << program.program.p();
 }
 
 int main(int argc, char **argv) {
