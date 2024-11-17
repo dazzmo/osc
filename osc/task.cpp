@@ -58,8 +58,11 @@ PositionTask::to_task_cost(const model_sym_t &model) const {
     // Compute weighted squared norm
     sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
 
+    // Concatenate parameters
+    sym_t p = sym_t::vertcat({q_s, v_s, w_s, xacc_d_s});
+
     return bopt::casadi::quadratic_cost<value_type>::create(
-        cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s}));
+        cost, a_s, sym_vector_t({p}));
 }
 
 OrientationTask::OrientationTask(const model_sym_t &model,

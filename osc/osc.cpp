@@ -3,6 +3,7 @@
 namespace osc {
 
 void OSC::loop() {
+    assert(is_initialised_ && "OSC is not initialised!");
     // Update references for all tasks
     // program.set_parameter(q, q);
     // program.set_parameter(v, v);
@@ -24,7 +25,7 @@ void OSC::loop() {
     }
 
     // Once updated, solve the program
-    // qp.solve()
+    qp_->solve();
 
     // if(reset) qp.reset()
 }

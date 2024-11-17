@@ -43,7 +43,7 @@ TEST(OSC, AddPositionTask) {
     left_foot->parameters().w << 3.0, 2.0, 1.0;
 
     // LOG(INFO) << program.program.p();
-
+    program.init();
     program.loop();
 
     // LOG(INFO) << program.program.p();
@@ -67,7 +67,7 @@ TEST(OSC, AddOrientationTask) {
 
     // Test if variables can be set
     pelvis->parameters().w << 1.0, 2.0, 3.0;
-
+    program.init();
     program.loop();
 }
 
@@ -89,7 +89,7 @@ TEST(OSC, AddSE3Task) {
 
     // Test if variables can be set
     pelvis->parameters().w << 1.0, 2.0, 3.0, 1.0, 1.0, 1.0;
-
+    program.init();
     program.loop();
 }
 
@@ -119,7 +119,7 @@ TEST(OSC, AddContact3D) {
     // Set it in contact
     program.get_contact_point_3d("left_foot")->in_contact = true;
     program.get_contact_point_3d("left_foot")->parameters().mu = 2.0;
-
+    program.init();
     program.loop();
 
     LOG(INFO) << program.program.p();
@@ -142,7 +142,6 @@ TEST(OSC, DynamicsWithContact) {
 
     program.add_contact_point_3d("left_foot", left_foot);
     program.init();
-
     program.loop();
 }
 
@@ -161,8 +160,9 @@ TEST(OSC, FullProgram) {
 
     // Create a task
     std::shared_ptr<osc::PositionTask> right_foot =
-        std::make_shared<osc::PositionTask>(model_sym, "RightFootFront", "universe");
-    
+        std::make_shared<osc::PositionTask>(model_sym, "RightFootFront",
+                                            "universe");
+
     // Create a task
     std::shared_ptr<osc::SE3Task> pelvis =
         std::make_shared<osc::SE3Task>(model_sym, "pelvis", "universe");
@@ -173,9 +173,13 @@ TEST(OSC, FullProgram) {
     program.add_contact_point_3d("left", left_foot);
     program.add_se3_task("pelvis", pelvis);
 
-    program.init();
+    program.get_se3_task("pelvis")->reference.pose.setRandom();
+    program.get_se3_task("pelvis")->reference.twist.setZero();
 
+    program.init();
     program.loop();
+
+    LOG(INFO) << program.program.p();
 }
 
 int main(int argc, char **argv) {

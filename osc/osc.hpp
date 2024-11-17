@@ -2,6 +2,8 @@
 
 #include <bopt/program.h>
 
+#include <bopt/solvers/qpoases.hpp>
+
 #include "osc/contact.hpp"
 #include "osc/dynamics.hpp"
 #include "osc/task.hpp"
@@ -75,6 +77,11 @@ class OSC {
         // All tasks added, finalise dynamics constraint
         add_dynamics_to_program(dynamics_);
         // visitor.init();
+
+        qp_ = std::make_unique<bopt::solvers::qpoases_solver_instance>(program);
+
+        // Create solver
+        is_initialised_ = true;
     }
 
     /**
@@ -89,15 +96,38 @@ class OSC {
         add_task_to_program(*task);
     }
 
+    std::shared_ptr<PositionTask> get_position_task(const string_t &name) {
+        if (tasks_.position_tasks_.find(name) != tasks_.position_tasks_.end()) {
+            return tasks_.position_tasks_.at(name);
+        }
+        return nullptr;
+    }
+
     void add_orientation_task(const std::string &name,
                               std::shared_ptr<OrientationTask> &task) {
         tasks_.orientation_tasks_.insert({name, task});
         add_task_to_program(*task);
     }
 
+    std::shared_ptr<OrientationTask> get_orientation_task(
+        const string_t &name) {
+        if (tasks_.orientation_tasks_.find(name) !=
+            tasks_.orientation_tasks_.end()) {
+            return tasks_.orientation_tasks_.at(name);
+        }
+        return nullptr;
+    }
+
     void add_se3_task(const std::string &name, std::shared_ptr<SE3Task> &task) {
         tasks_.se3_tasks_.insert({name, task});
         add_task_to_program(*task);
+    }
+
+    std::shared_ptr<SE3Task> get_se3_task(const string_t &name) {
+        if (tasks_.se3_tasks_.find(name) != tasks_.se3_tasks_.end()) {
+            return tasks_.se3_tasks_.at(name);
+        }
+        return nullptr;
     }
 
     template <class TaskType>
@@ -113,6 +143,7 @@ class OSC {
             program.add_parameter(
                 task.parameters_v.desired_task_acceleration[i]);
         }
+        
         // Bind to program
         program.add_quadratic_cost(
             cost,
@@ -162,7 +193,8 @@ class OSC {
         program.add_linear_constraint(
             friction_cone,
             // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(variables.lambda.bottomRows(contact.dimension()))},
+            {eigen_to_std_vector<bopt::variable>::convert(
+                variables.lambda.bottomRows(contact.dimension()))},
             // contact-specific parameters
             {eigen_to_std_vector<bopt::variable>::convert(
                  contact.parameters_v.n),
@@ -201,7 +233,8 @@ class OSC {
         return nullptr;
     }
 
-    void add_holonomic_constraint_to_program(const HolonomicConstraint &constraint) {
+    void add_holonomic_constraint_to_program(
+        const HolonomicConstraint &constraint) {
         // Create new variables
         eigen_vector_var_t lambda =
             create_variable_vector("lambda", constraint.dimension());
@@ -301,7 +334,9 @@ class OSC {
 
     Dynamics dynamics_;
 
-    model_sym_t & model;
+    model_sym_t &model;
+
+    bool is_initialised_ = false;
 
     // task_map_t<OrientationTask> orientation_tasks_;
     // task_map_t<SE3Task> se3_tasks_;
@@ -317,7 +352,7 @@ class OSC {
         return all;
     }
 
-    // std::unique_ptr<Dynamics> dynamics_;
+    std::unique_ptr<bopt::solvers::qpoases_solver_instance> qp_;
 };
 
 }  // namespace osc
