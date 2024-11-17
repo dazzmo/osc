@@ -4,20 +4,6 @@
 
 namespace osc {
 
-struct dynamics_constraint_handler {
-    void add(const sym_t &jacobian, const sym_t &lambda) {}
-
-    // Constraint Jacobian
-    sym_t jacobian;
-    // Constraint forces
-    sym_t lambda;
-
-    // Variables
-    sym_t variables;
-    // Parameters
-    sym_t parameters;
-};
-
 template <typename VectorType>
 struct dynamics_variables {
     VectorType a;
@@ -29,32 +15,32 @@ template <typename VectorType>
 struct dynamics_parameters {
     VectorType q;
     VectorType v;
-    VectorType additional;
 };
 
 class Dynamics {
+    friend class OSC;
+
    public:
+    typedef double value_type;
+
     Dynamics(model_sym_t &model);
 
-    // void register_contact_point(const ContactP &task);
-
     void register_actuation(const eigen_matrix_sym_t &B,
-                            const eigen_vector_sym_t &u,
-                            const eigen_vector_sym_t &p);
+                            const eigen_vector_var_t &u_v);
 
-    void to_constraint();
+    void add_constraint(const ContactPoint &contact,
+                        const eigen_vector_var_t &lambda_v);
 
-    void add_constraint();
-
-    void register_additional_dynamics(const sym_t &f,
-                                      const std::vector<sym_t> &p);
-
-    // dynamics_parameters<bopt::variable> parameters;
-    // dynamics_parameters<double> parameters_d;
+    bopt::linear_constraint<value_type>::shared_ptr to_constraint();
 
    private:
-    dynamics_variables<eigen_vector_sym_t> variables_;
-    dynamics_parameters<eigen_vector_sym_t> parameters_;
+    model_sym_t &model;
+
+    dynamics_variables<eigen_vector_sym_t> variables_s_;
+    dynamics_variables<eigen_vector_var_t> variables_v_;
+    dynamics_parameters<eigen_vector_sym_t> parameters_s_;
+    dynamics_parameters<eigen_vector_var_t> parameters_v_;
+
     eigen_vector_sym_t dynamics_;
 };
 

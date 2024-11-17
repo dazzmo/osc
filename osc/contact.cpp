@@ -47,20 +47,17 @@ ContactPoint3D::create_friction_bound_constraint(
 
 bopt::linear_constraint<ContactPoint3D::value_type>::shared_ptr
 ContactPoint3D::create_no_slip_constraint(const model_sym_t &model) const {
-    LOG(INFO) << "HERE";
     // Compute the target frame in the contact frame of the model
     eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
     eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
     eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
     eigen_vector_sym_t e = create_symbolic_vector("e", dimension());
 
-    LOG(INFO) << "Frame";
+
 
     // Compute frame state
     frame_state<sym_t> frame =
         get_frame_state(model, q, v, a, target_frame, "universe");
-
-    LOG(INFO) << "Done";
 
     // Create expression evaluators
     sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
@@ -71,8 +68,6 @@ ContactPoint3D::create_no_slip_constraint(const model_sym_t &model) const {
     // No slip condition => xacc = J qacc + \dot J qvel = epsilon
     sym_t constraint =
         eigen_to_casadi<sym_elem_t>::convert(frame.acc.linear() - e);
-
-    LOG(INFO) << constraint;
 
     // todo - need to consider the frame transformation from contact frame to
     // todo - end-effector frame

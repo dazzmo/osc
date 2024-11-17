@@ -32,7 +32,10 @@ class ContactPoint {
 
     ContactPoint(const index_type &dim, const index_type &model_nq,
                  const index_type &model_nv, const string_t &target)
-        : dimension_(dim), model_nq_(model_nq), model_nv_(model_nv), target_frame(target) {
+        : dimension_(dim),
+          model_nq_(model_nq),
+          model_nv_(model_nv),
+          target_frame(target) {
         parameters_v.epsilon = create_variable_vector("eps", dimension());
         parameters_d.epsilon = eigen_vector_t::Zero(dimension());
 
@@ -69,19 +72,19 @@ class ContactPoint {
      * @brief Provides the contact Jacobian for the system
      *
      */
-    sym_t contact_jacobian(const model_sym_t &model, const sym_t &q) {
-        // pinocchio::DataTpl<Scalar> data(model);
+    eigen_matrix_sym_t contact_jacobian(const model_sym_t &model,
+                                        const eigen_vector_sym_t &q) const {
+        pinocchio::DataTpl<sym_t> data(model);
 
-        // // Compute the kinematic tree state of the system
-        // pinocchio::forwardKinematics(model, data, q, v, a);
-        // pinocchio::updateFramePlacements(model, data);
+        // Compute the kinematic tree state of the system
+        pinocchio::forwardKinematics(model, data, q);
+        pinocchio::updateFramePlacements(model, data);
 
-        // pinocchio::computeJacobian
+        eigen_matrix_sym_t J = eigen_matrix_sym_t::Zero(6, model.nv);
+        pinocchio::computeFrameJacobian(model, data, q,
+                                        model.getFrameId(target_frame),
+                                        pinocchio::ReferenceFrame::WORLD, J);
 
-        sym_t J;
-
-        //   casadi::SX J = sym_t::jacobian(task->vel_sym(),
-        //   symbolic_terms_->qvel());
         return J;
     }
 

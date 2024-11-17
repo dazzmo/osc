@@ -3,6 +3,7 @@
 #include <bopt/program.h>
 
 #include "osc/contact.hpp"
+#include "osc/dynamics.hpp"
 #include "osc/task.hpp"
 
 namespace osc {
@@ -51,7 +52,7 @@ struct osc_parameters {
 
 class OSC {
    public:
-    OSC(model_sym_t &model) : model(model) {
+    OSC(model_sym_t &model) : model(model), dynamics_(model) {
         // Create system dynamics
         variables.a = create_variable_vector("a", model.nv);
 
@@ -68,11 +69,16 @@ class OSC {
         for (std::size_t i = 0; i < model.nv; ++i) {
             program.add_parameter(parameters.v[i]);
         }
+
+        // Set up variables for the dynamics
+        dynamics_.variables_v_.a = variables.a;
+        dynamics_.parameters_v_.q = parameters.q;
+        dynamics_.parameters_v_.v = parameters.v;
     }
 
     void init() {
         // All tasks added, finalise dynamics constraint
-        // dynamics_->add_constraint(program);
+        add_dynamics_to_program(dynamics_);
         // visitor.init();
     }
 
@@ -137,9 +143,13 @@ class OSC {
         // Create new variables
         eigen_vector_var_t lambda =
             create_variable_vector("lambda", contact.dimension());
+
         for (std::size_t i = 0; i < lambda.size(); ++i) {
             program.add_variable(lambda[i]);
         }
+
+        // Add to dynamics
+        dynamics_.add_constraint(contact, lambda);
 
         // Parameters
         for (std::size_t i = 0; i < contact.parameters_v.epsilon.size(); ++i) {
@@ -204,6 +214,25 @@ class OSC {
         return nullptr;
     }
 
+    void add_holonomic_constraint(const std::string &name,
+                                  std::shared_ptr<ContactPoint3D> &contact) {
+    }
+
+    void add_dynamics_to_program(Dynamics &dynamics) {
+        auto dynamics_constraint = dynamics.to_constraint();
+
+        // Bind to program
+        program.add_linear_constraint(
+            dynamics_constraint,
+            // Variables
+            {eigen_to_std_vector<bopt::variable>::convert(variables.a),
+             eigen_to_std_vector<bopt::variable>::convert(variables.u),
+             eigen_to_std_vector<bopt::variable>::convert(variables.lambda)},
+            // contact-specific parameters
+            {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
+             eigen_to_std_vector<bopt::variable>::convert(parameters.v)});
+    }
+
     bopt::mathematical_program<double> program;
 
     osc_variables<eigen_vector_var_t> variables;
@@ -238,35 +267,41 @@ class OSC {
         }
     }
 
-    template <class TaskType>
-    void update_contact_point(TaskType &task) {
-        // Set weighting
-        // program.set_parameter(task.parameters().w, task.parameters().w);
-        typedef typename task_traits<TaskType>::task_state_t task_state_t;
-        typedef typename task_traits<TaskType>::task_error_t task_error_t;
-        typedef typename task_traits<TaskType>::reference_t reference_t;
+    template <class ContactPoint>
+    void update_contact_point(ContactPoint &contact) {
+        // todo - detect a change in contact to minimise variable setting
+        if (contact.in_contact) {
+            for (std::size_t i = 0; i < contact.dimension(); ++i) {
+                // program.set_parameter(
+                //     contact.parameters_v.friction_force_upper_bound[i],
+                //     contact.parameters().friction_force_upper_bound[i]);
 
-        // Task::model_state_t model_state(1, 1);
+                // program.set_parameter(
+                //     contact.parameters_v.friction_force_lower_bound[i],
+                //     contact.parameters().friction_force_lower_bound[i]);
+            }
 
-        // task_state_t task_state;
-        // // Evaluate task error
-        // task.get_task_state(model_state, task_state);
-        // task_error_t task_error(task.dimension());
-        // task.get_task_error(task_state, task_error);
-
-        // // Set desired acceleration as PID output
-        // task.parameters().desired_task_acceleration =
-        //     task.pid.compute(task_error);
-
-        for (std::size_t i = 0; i < task.parameters().w.size(); ++i) {
-            program.set_parameter(task.parameters_v.w[i],
-                                  task.parameters().w[i]);
+            for (std::size_t i = 0; i < 3; ++i) {
+                program.set_parameter(contact.parameters_v.n[i],
+                                      contact.parameters().n[i]);
+                program.set_parameter(contact.parameters_v.t[i],
+                                      contact.parameters().t[i]);
+                program.set_parameter(contact.parameters_v.b[i],
+                                      contact.parameters().b[i]);
+            }
+            program.set_parameter(contact.parameters_v.mu,
+                                  contact.parameters().mu);
+            // contact.parameters().friction_force_lower_bound =
+            // contact.parameters().friction_force_upper_bound =
+        } else {
         }
     }
 
    private:
     osc_task_maps tasks_;
     osc_contact_point_maps contacts_;
+
+    Dynamics dynamics_;
 
     model_sym_t &model;
 
