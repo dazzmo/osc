@@ -118,6 +118,10 @@ TEST(OSC, AddContact3D) {
     left_foot->parameters().t = Eigen::Vector3d::UnitX();
     left_foot->parameters().b = Eigen::Vector3d::UnitY();
 
+    // Set it in contact
+    program.get_contact_point_3d("left_foot")->in_contact = true;
+    program.get_contact_point_3d("left_foot")->parameters().mu = 2.0;
+
     program.loop();
 
     LOG(INFO) << program.program.p();

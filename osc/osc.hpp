@@ -197,7 +197,12 @@ class OSC {
         //          parameters.friction_force_lower_bound)});
     }
 
-    void get_contact_point(const string_t &name) {}
+    std::shared_ptr<ContactPoint3D> get_contact_point_3d(const string_t &name) {
+        if (contacts_.contact_3d_.find(name) != contacts_.contact_3d_.end()) {
+            return contacts_.contact_3d_.at(name);
+        }
+        return nullptr;
+    }
 
     bopt::mathematical_program<double> program;
 
