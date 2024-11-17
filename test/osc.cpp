@@ -108,10 +108,8 @@ TEST(OSC, AddContact3D) {
 
     osc::OSC program(model_sym);
 
-
     LOG(INFO) << "Adding";
     program.add_contact_point_3d("left_foot", left_foot);
-    
 
     // Test if variables can be set
     left_foot->parameters().n = Eigen::Vector3d::UnitZ();
@@ -143,6 +141,38 @@ TEST(OSC, DynamicsWithContact) {
     osc::OSC program(model_sym);
 
     program.add_contact_point_3d("left_foot", left_foot);
+    program.init();
+
+    program.loop();
+}
+
+TEST(OSC, FullProgram) {
+    // Load a model
+    const std::string urdf_filename = "test/cassie.urdf";
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdf_filename, model);
+    // Create symbolic representation
+    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
+
+    // Create a task
+    LOG(INFO) << "Creating";
+    std::shared_ptr<osc::ContactPoint3D> left_foot =
+        std::make_shared<osc::ContactPoint3D>(model_sym, "LeftFootBack");
+
+    // Create a task
+    std::shared_ptr<osc::PositionTask> right_foot =
+        std::make_shared<osc::PositionTask>(model_sym, "RightFootFront", "universe");
+    
+    // Create a task
+    std::shared_ptr<osc::SE3Task> pelvis =
+        std::make_shared<osc::SE3Task>(model_sym, "pelvis", "universe");
+
+    osc::OSC program(model_sym);
+
+    program.add_position_task("right", right_foot);
+    program.add_contact_point_3d("left", left_foot);
+    program.add_se3_task("pelvis", pelvis);
+
     program.init();
 
     program.loop();
