@@ -39,12 +39,17 @@ TEST(OSC, AddPositionTask) {
     program.add_position_task("left_foot", left_foot);
 
     // Test if variables can be set
-    right_foot->parameters().w << 1.0, 2.0, 3.0;
-    left_foot->parameters().w << 3.0, 2.0, 1.0;
+    right_foot->parameters().w.setOnes();
+    left_foot->parameters().w.setOnes();
+
+    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+    model_state.position.setRandom();
+    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    model_state.velocity.setRandom();
 
     // LOG(INFO) << program.program.p();
     program.init();
-    program.loop();
+    program.loop(model_state);
 
     // LOG(INFO) << program.program.p();
 }
@@ -67,8 +72,14 @@ TEST(OSC, AddOrientationTask) {
 
     // Test if variables can be set
     pelvis->parameters().w << 1.0, 2.0, 3.0;
+    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+    model_state.position.setRandom();
+    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    model_state.velocity.setRandom();
+
+    // LOG(INFO) << program.program.p();
     program.init();
-    program.loop();
+    program.loop(model_state);
 }
 
 TEST(OSC, AddSE3Task) {
@@ -89,8 +100,14 @@ TEST(OSC, AddSE3Task) {
 
     // Test if variables can be set
     pelvis->parameters().w << 1.0, 2.0, 3.0, 1.0, 1.0, 1.0;
+    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+    model_state.position.setRandom();
+    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    model_state.velocity.setRandom();
+
+    // LOG(INFO) << program.program.p();
     program.init();
-    program.loop();
+    program.loop(model_state);
 }
 
 TEST(OSC, AddContact3D) {
@@ -119,8 +136,14 @@ TEST(OSC, AddContact3D) {
     // Set it in contact
     program.get_contact_point_3d("left_foot")->in_contact = true;
     program.get_contact_point_3d("left_foot")->parameters().mu = 2.0;
+    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+    model_state.position.setRandom();
+    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    model_state.velocity.setRandom();
+
+    // LOG(INFO) << program.program.p();
     program.init();
-    program.loop();
+    program.loop(model_state);
 
     LOG(INFO) << program.program.p();
 }
@@ -141,8 +164,14 @@ TEST(OSC, DynamicsWithContact) {
     osc::OSC program(model_sym);
 
     program.add_contact_point_3d("left_foot", left_foot);
+    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+    model_state.position.setRandom();
+    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    model_state.velocity.setRandom();
+
+    // LOG(INFO) << program.program.p();
     program.init();
-    program.loop();
+    program.loop(model_state);
 }
 
 TEST(OSC, FullProgram) {
@@ -176,8 +205,14 @@ TEST(OSC, FullProgram) {
     program.get_se3_task("pelvis")->reference.pose.setRandom();
     program.get_se3_task("pelvis")->reference.twist.setZero();
 
+    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+    model_state.position.setRandom();
+    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    model_state.velocity.setRandom();
+
+    // LOG(INFO) << program.program.p();
     program.init();
-    program.loop();
+    program.loop(model_state);
 
     LOG(INFO) << program.program.p();
 }
@@ -190,7 +225,7 @@ int main(int argc, char **argv) {
     FLAGS_logtostderr = 1;
     FLAGS_colorlogtostderr = 1;
     FLAGS_log_prefix = 1;
-    // FLAGS_v = 10;
+    FLAGS_v = 10;
 
     int status = RUN_ALL_TESTS();
 

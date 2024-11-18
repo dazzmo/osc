@@ -38,11 +38,14 @@ bopt::bounding_box_constraint<ContactPoint3D::value_type>::shared_ptr
 ContactPoint3D::create_friction_bound_constraint(
     const model_sym_t &model) const {
     // Create bounding box constraint
-    eigen_vector_sym_t f = create_symbolic_vector("l", dimension());
-    eigen_vector_sym_t fu = create_symbolic_vector("fu", dimension());
     eigen_vector_sym_t fl = create_symbolic_vector("fl", dimension());
+    eigen_vector_sym_t fu = create_symbolic_vector("fu", dimension());
 
-    return nullptr;
+    sym_t fl_s = eigen_to_casadi<sym_elem_t>::convert(fl);
+    sym_t fu_s = eigen_to_casadi<sym_elem_t>::convert(fu);
+
+    return bopt::casadi::bounding_box_constraint<value_type>::create(
+        fl_s, fu_s, sym_vector_t({fl_s, fu_s}));
 }
 
 bopt::linear_constraint<ContactPoint3D::value_type>::shared_ptr
@@ -52,8 +55,6 @@ ContactPoint3D::create_no_slip_constraint(const model_sym_t &model) const {
     eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
     eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
     eigen_vector_sym_t e = create_symbolic_vector("e", dimension());
-
-
 
     // Compute frame state
     frame_state<sym_t> frame =

@@ -1,7 +1,6 @@
 #pragma once
 
-#include <bopt/program.h>
-
+#include <bopt/program.hpp>
 #include <bopt/solvers/qpoases.hpp>
 
 #include "osc/contact.hpp"
@@ -54,6 +53,8 @@ struct osc_parameters {
 
 class OSC {
    public:
+    typedef state<eigen_vector_t> model_state_t;
+
     OSC(model_sym_t &model) : model(model), dynamics_(model) {
         // Create system dynamics
         variables.a = create_variable_vector("a", model.nv);
@@ -88,7 +89,7 @@ class OSC {
      * @brief Loop function that computes the optimal control by solving an OCP
      *
      */
-    void loop();
+    void loop(const state<eigen_vector_t> &model_state);
 
     void add_position_task(const std::string &name,
                            std::shared_ptr<PositionTask> &task) {
@@ -143,7 +144,7 @@ class OSC {
             program.add_parameter(
                 task.parameters_v.desired_task_acceleration[i]);
         }
-        
+
         // Bind to program
         program.add_quadratic_cost(
             cost,
@@ -182,6 +183,16 @@ class OSC {
         for (std::size_t i = 0; i < contact.parameters_v.b.size(); ++i) {
             program.add_parameter(contact.parameters_v.b[i]);
         }
+        for (std::size_t i = 0;
+             i < contact.parameters_v.friction_force_upper_bound.size(); ++i) {
+            program.add_parameter(
+                contact.parameters_v.friction_force_upper_bound[i]);
+        }
+        for (std::size_t i = 0;
+             i < contact.parameters_v.friction_force_lower_bound.size(); ++i) {
+            program.add_parameter(
+                contact.parameters_v.friction_force_lower_bound[i]);
+        }
         program.add_parameter(contact.parameters_v.mu);
 
         // Create constraints
@@ -215,15 +226,16 @@ class OSC {
              eigen_to_std_vector<bopt::variable>::convert(
                  contact.parameters_v.epsilon)});
 
-        // program.add_bounding_box_constraint(
-        //     friction_bound,
-        //     // Variables
-        //     {eigen_to_std_vector<bopt::variable>::convert(lambda)},
-        //     // Parameters
-        //     {eigen_to_std_vector<bopt::variable>::convert(
-        //          parameters.friction_force_upper_bound),
-        //      eigen_to_std_vector<bopt::variable>::convert(
-        //          parameters.friction_force_lower_bound)});
+        program.add_bounding_box_constraint(
+            friction_bound,
+            // Variables
+            {eigen_to_std_vector<bopt::variable>::convert(
+                variables.lambda.bottomRows(contact.dimension()))},
+            // Parameters
+            {eigen_to_std_vector<bopt::variable>::convert(
+                 contact.parameters_v.friction_force_lower_bound),
+             eigen_to_std_vector<bopt::variable>::convert(
+                 contact.parameters_v.friction_force_upper_bound)});
     }
 
     std::shared_ptr<ContactPoint3D> get_contact_point_3d(const string_t &name) {
@@ -269,28 +281,23 @@ class OSC {
     osc_variables<eigen_vector_var_t> variables;
     osc_parameters<eigen_vector_var_t> parameters;
 
-    // Solver instance
-    // bopt::solvers::qpoases_solver_instance qp_solver;
-
     template <class TaskType>
-    void update_task(TaskType &task) {
+    void update_task(const model_state_t &model_state, TaskType &task) {
         // Set weighting
         // program.set_parameter(task.parameters().w, task.parameters().w);
         typedef typename task_traits<TaskType>::task_state_t task_state_t;
         typedef typename task_traits<TaskType>::task_error_t task_error_t;
         typedef typename task_traits<TaskType>::reference_t reference_t;
 
-        // Task::model_state_t model_state(1, 1);
+        task_state_t task_state;
+        // Evaluate task error
+        task.get_task_state(model_state, task_state);
+        task_error_t task_error(task.dimension());
+        task.get_task_error(task_state, task_error);
 
-        // task_state_t task_state;
-        // // Evaluate task error
-        // task.get_task_state(model_state, task_state);
-        // task_error_t task_error(task.dimension());
-        // task.get_task_error(task_state, task_error);
-
-        // // Set desired acceleration as PID output
-        // task.parameters().desired_task_acceleration =
-        //     task.pid.compute(task_error);
+        // Set desired acceleration as PID output
+        task.parameters().desired_task_acceleration =
+            task.pid.compute(task_error);
 
         for (std::size_t i = 0; i < task.parameters().w.size(); ++i) {
             program.set_parameter(task.parameters_v.w[i],
@@ -299,7 +306,8 @@ class OSC {
     }
 
     template <class ContactPoint>
-    void update_contact_point(ContactPoint &contact) {
+    void update_contact_point(const model_state_t &model_state,
+                              ContactPoint &contact) {
         // todo - detect a change in contact to minimise variable setting
         if (contact.in_contact) {
             for (std::size_t i = 0; i < contact.dimension(); ++i) {
@@ -329,29 +337,21 @@ class OSC {
     }
 
    private:
+    // Task map
     osc_task_maps tasks_;
+    // Contact map
     osc_contact_point_maps contacts_;
 
+    // System dynamics
     Dynamics dynamics_;
 
+    // Symbolic model
     model_sym_t &model;
 
+    // Initialisation flag
     bool is_initialised_ = false;
 
-    // task_map_t<OrientationTask> orientation_tasks_;
-    // task_map_t<SE3Task> se3_tasks_;
-
-    std::vector<Task> get_all_tasks() {
-        std::vector<Task> all;
-        // all.assign(all.end(), position_tasks_.begin(),
-        // position_tasks_.end()); all.assign(all.end(),
-        // orientation_tasks_.begin(),
-        //            orientation_tasks_.end());
-        // all.assign(all.end(), se3_tasks_.begin(), se3_tasks_.end());
-
-        return all;
-    }
-
+    // QP solver
     std::unique_ptr<bopt::solvers::qpoases_solver_instance> qp_;
 };
 

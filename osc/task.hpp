@@ -1,6 +1,6 @@
 #pragma once
 
-#include <bopt/program.h>
+#include <bopt/program.hpp>
 
 #define GLOG_USE_GLOG_EXPORT
 #include <glog/logging.h>
@@ -31,21 +31,6 @@ struct task_traits {
 
 struct task_attributes {};
 
-/**
- * @brief State of a given system
- *
- * @tparam Vector
- */
-template <typename VectorType>
-struct state {
-    state(const std::size_t &nq, const std::size_t &nv)
-        : position(nq), velocity(nv), acceleration(nv) {}
-
-    VectorType position;
-    VectorType velocity;
-    VectorType acceleration;
-};
-
 template <typename VectorType>
 struct pid_error {
     pid_error(const std::size_t &sz)
@@ -61,7 +46,9 @@ struct pid_gains {
     pid_gains(const std::size_t &sz) : p(sz), i(sz), d(sz) {}
 
     constexpr VectorType compute(const pid_error<VectorType> &error) {
-        return p * error.positional + i * error.integral + d * error.derivative;
+        return p.asDiagonal() * error.positional +
+               i.asDiagonal() * error.integral +
+               d.asDiagonal() * error.derivative;
     }
 
     VectorType p;
@@ -254,8 +241,8 @@ class PositionTask : public Task {
         const model_sym_t &model) const override;
 
     struct task_state {
-        eigen_vector_t position;
-        eigen_vector_t velocity;
+        eigen_vector3_t position = eigen_vector3_t::Zero();
+        eigen_vector3_t velocity = eigen_vector3_t::Zero();
     };
 
     typedef task_state task_state_t;
@@ -263,10 +250,14 @@ class PositionTask : public Task {
 
     integer_type get_task_state(const model_state_t &model_state,
                                 task_state_t &task_state) const {
-        // (*xpos)({model_state.position, model_state.velocity},
-        //         {task_state.position.data()});
-        // (*xvel)({model_state.position, model_state.velocity},
-        //         {task_state.velocity.data()});
+        (*xpos)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {task_state.position.data()});
+        (*xvel)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {task_state.velocity.data()});
         return integer_type(0);
     }
 
@@ -299,8 +290,8 @@ class OrientationTask : public Task {
         const model_sym_t &model) const override;
 
     struct task_state {
-        eigen_matrix_t rotation;
-        eigen_vector_t velocity;
+        eigen_matrix3_t rotation = eigen_matrix3_t::Identity();
+        eigen_vector3_t velocity = eigen_vector3_t::Zero();
     };
 
     typedef task_state task_state_t;
@@ -308,10 +299,14 @@ class OrientationTask : public Task {
 
     integer_type get_task_state(const model_state_t &model_state,
                                 task_state_t &task_state) const {
-        // (*xpos)({model_state.position, model_state.velocity},
-        //         {task_state.position.data()});
-        // (*xvel)({model_state.position, model_state.velocity},
-        //         {task_state.velocity.data()});
+        (*xpos)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {task_state.rotation.data()});
+        (*xvel)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {task_state.velocity.data()});
         return integer_type(0);
     }
 
@@ -341,28 +336,53 @@ class OrientationTask : public Task {
     std::unique_ptr<expression_evaluator_t> xvel;
 };
 
-class CentreOfMassTask : public PositionTask {
+class CentreOfMassTask : public Task {
    public:
-    CentreOfMassTask(const model_sym_t &model, const std::string &frame_name,
+    CentreOfMassTask(const model_sym_t &model,
                      const std::string &reference_frame);
 
     bopt::quadratic_cost<value_type>::shared_ptr to_task_cost(
         const model_sym_t &model) const override;
 
-    const std::string &reference_frame();
+    struct task_state {
+        eigen_vector3_t position = eigen_vector3_t::Zero();
+        eigen_vector3_t velocity = eigen_vector3_t::Zero();
+    };
+
+    typedef task_state task_state_t;
+    typedef task_state_t reference_t;
 
     integer_type get_task_state(const model_state_t &model_state,
                                 task_state_t &task_state) const {
-        // (*xpos)({model_state.position, model_state.velocity},
-        //         {task_state.position.data()});
-        // (*xvel)({model_state.position, model_state.velocity},
-        //         {task_state.velocity.data()});
+        (*xpos)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {task_state.position.data()});
+        (*xvel)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {task_state.velocity.data()});
         return integer_type(0);
     }
 
+    integer_type get_task_error(const task_state_t &task_state,
+                                task_error_t &error,
+                                const value_type &dt = 0.0) const {
+        error.positional = task_state.position - reference.position;
+        error.derivative = task_state.velocity - reference.velocity;
+        error.integral += dt * error.positional;
+        return integer_type(0);
+    }
+
+    reference_t reference;
+    string_t target_frame;
+    string_t reference_frame;
+
    private:
-    bopt::casadi::expression_evaluator<value_type> xpos;
-    bopt::casadi::expression_evaluator<value_type> xvel;
+    typedef bopt::casadi::expression_evaluator<value_type>
+        expression_evaluator_t;
+    std::unique_ptr<expression_evaluator_t> xpos;
+    std::unique_ptr<expression_evaluator_t> xvel;
 };
 
 class SE3Task : public Task {
@@ -386,10 +406,24 @@ class SE3Task : public Task {
 
     integer_type get_task_state(const model_state_t &model_state,
                                 task_state_t &task_state) const {
-        // (*xpos)({model_state.position, model_state.velocity},
-        //         {task_state.position.data()});
-        // (*xvel)({model_state.position, model_state.velocity},
-        //         {task_state.velocity.data()});
+        std::vector<value_type> pos_data(3 + 9), vel_data(6);
+        (*xpos)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {pos_data.data()});
+        // Map to state
+        task_state.pose.translation() << pos_data[0], pos_data[1], pos_data[2];
+        task_state.pose.rotation() << pos_data[3], pos_data[4], pos_data[5],
+            pos_data[6], pos_data[7], pos_data[8], pos_data[9], pos_data[10],
+            pos_data[11];
+
+        (*xvel)(std::vector<const value_type *>(
+                    {model_state.position.data(), model_state.velocity.data()})
+                    .data(),
+                {vel_data.data()});
+
+        task_state.twist.linear() << vel_data[0], vel_data[1], vel_data[2];
+        task_state.twist.angular() << vel_data[3], vel_data[4], vel_data[5];
         return integer_type(0);
     }
 
@@ -406,7 +440,7 @@ class SE3Task : public Task {
         error.integral += dt * error.positional;
         return integer_type(0);
     }
-    
+
     reference_t reference;
     string_t target_frame;
     string_t reference_frame;
