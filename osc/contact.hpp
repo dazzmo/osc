@@ -9,15 +9,22 @@ struct contact_point_traits {};
 
 template <typename VectorType, typename ScalarType>
 struct contact_point_parameters {
+    // Slack variable for no-slip condition in linear constraint defining
+    // contact
     VectorType epsilon;
 
+    // Friction coeffcient
     ScalarType mu;
-
+    // Normal vector for contact (in contact surface frame)
     VectorType n;
+    // Tangent vector for contact (in contact surface frame)
     VectorType t;
+    // Remaining vector for contact (in contact surface frame)
     VectorType b;
 
+    // Upper bound for frictional force
     VectorType friction_force_upper_bound;
+    // Lower bound for frictional force
     VectorType friction_force_lower_bound;
 };
 
@@ -63,9 +70,6 @@ class ContactPoint : public HolonomicConstraint {
     virtual bopt::bounding_box_constraint<value_type>::shared_ptr
     create_friction_bound_constraint(const model_sym_t &model) const = 0;
 
-    virtual bopt::linear_constraint<value_type>::shared_ptr
-    create_no_slip_constraint(const model_sym_t &model) const = 0;
-
     /**
      * @brief Provides the contact Jacobian for the system
      *
@@ -104,14 +108,41 @@ class ContactPoint3D : public ContactPoint {
     ContactPoint3D(const model_sym_t &model, const string_t &target)
         : ContactPoint(3, model.nq, model.nv, target) {}
 
+    /**
+     * @brief Imposes a linearised friction cone constraint for the contact
+     * forces \f$ \lambda \f$
+     *
+     * @param model
+     * @return bopt::linear_constraint<value_type>::shared_ptr
+     */
     bopt::linear_constraint<value_type>::shared_ptr create_friction_constraint(
         const model_sym_t &model) const override;
 
+    /**
+     * @brief Creates a simple bounding box constraint for the constraint forces
+     * \f$ \lambda \f$
+     *
+     * @param model
+     * @return bopt::bounding_box_constraint<value_type>::shared_ptr
+     */
     bopt::bounding_box_constraint<value_type>::shared_ptr
     create_friction_bound_constraint(const model_sym_t &model) const override;
 
-    bopt::linear_constraint<value_type>::shared_ptr create_no_slip_constraint(
+    /**
+     * @brief The no-slip condition imposed as the linear constraint \f$ J \ddot
+     * q +
+     * \dot J \dot q - \epsilon = 0 \f$
+     *
+     * @param model
+     * @return bopt::linear_constraint<value_type>::shared_ptr
+     */
+    bopt::linear_constraint<value_type>::shared_ptr create_linear_constraint(
         const model_sym_t &model) const override;
+
+    eigen_matrix_sym_t constraint_jacobian(const model_sym_t &model,
+                                           const eigen_vector_sym_t &q) const {
+        return ContactPoint::constraint_jacobian(model, q).topRows(3);
+    }
 
    private:
 };

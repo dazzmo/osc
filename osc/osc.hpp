@@ -77,7 +77,6 @@ class OSC {
     void init() {
         // All tasks added, finalise dynamics constraint
         add_dynamics_to_program(dynamics_);
-        // visitor.init();
 
         qp_ = std::make_unique<bopt::solvers::qpoases_solver_instance>(program);
 
@@ -168,7 +167,7 @@ class OSC {
     template <class ContactType>
     void add_contact_point_to_program(const ContactType &contact) {
         // Add constraint components
-        add_holonomic_constraint_to_program(contact);
+        add_holonomic_constraint_forces_to_program(contact);
 
         // Parameters
         for (std::size_t i = 0; i < contact.parameters_v.epsilon.size(); ++i) {
@@ -198,7 +197,7 @@ class OSC {
         // Create constraints
         auto friction_cone = contact.create_friction_constraint(model);
         auto friction_bound = contact.create_friction_bound_constraint(model);
-        auto no_slip = contact.create_no_slip_constraint(model);
+        auto no_slip = contact.create_linear_constraint(model);
 
         // Bind to program
         program.add_linear_constraint(
@@ -245,7 +244,7 @@ class OSC {
         return nullptr;
     }
 
-    void add_holonomic_constraint_to_program(
+    void add_holonomic_constraint_forces_to_program(
         const HolonomicConstraint &constraint) {
         // Create new variables
         eigen_vector_var_t lambda =
@@ -255,22 +254,43 @@ class OSC {
                                             lambda.size());
         variables.lambda.bottomRows(lambda.size()) = lambda;
 
+        // Add constraint to dynamics
+        dynamics_.add_constraint(constraint);
+
         // Add lamba to variables
         for (std::size_t i = 0; i < lambda.size(); ++i) {
             program.add_variable(lambda[i]);
         }
     }
 
+    void add_holonomic_constraint_to_program(
+        const HolonomicConstraint &constraint) {
+        // Register constraint forces
+        add_holonomic_constraint_forces_to_program(constraint);
+
+        auto linear_constraint = constraint.create_linear_constraint(model);
+
+        program.add_linear_constraint(
+            linear_constraint,
+            // Variables
+            {eigen_to_std_vector<bopt::variable>::convert(variables.a)},
+            // Parameters
+            {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
+             eigen_to_std_vector<bopt::variable>::convert(parameters.v)});
+    }
+
     void add_dynamics_to_program(Dynamics &dynamics) {
-        auto dynamics_constraint = dynamics.to_constraint();
+        auto dynamics_constraint = dynamics.create_linear_constraint();
+
+        // Create vector for x 
+        eigen_vector_var_t x(variables.a.size() + variables.u.size() + variables.lambda.size());
+        x << variables.a, variables.u, variables.lambda;
 
         // Bind to program
         program.add_linear_constraint(
             dynamics_constraint,
             // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(variables.a),
-             eigen_to_std_vector<bopt::variable>::convert(variables.u),
-             eigen_to_std_vector<bopt::variable>::convert(variables.lambda)},
+            {eigen_to_std_vector<bopt::variable>::convert(x)},
             // contact-specific parameters
             {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
              eigen_to_std_vector<bopt::variable>::convert(parameters.v)});

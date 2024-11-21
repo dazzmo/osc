@@ -21,7 +21,7 @@ Dynamics::Dynamics(model_sym_t &model) : model(model) {
 }
 
 bopt::linear_constraint<Dynamics::value_type>::shared_ptr
-Dynamics::to_constraint() {
+Dynamics::create_linear_constraint() {
     // Create expression evaluators
     sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(parameters_s_.q);
     sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(parameters_s_.v);
@@ -53,13 +53,12 @@ void Dynamics::register_actuation(const eigen_matrix_sym_t &B,
     variables_s_.u = u;
 }
 
-void Dynamics::add_constraint(const HolonomicConstraint &constraint,
-                              const eigen_vector_var_t &lambda_v) {
+void Dynamics::add_constraint(const HolonomicConstraint &constraint) {
     // Add to dynamics
     auto J = constraint.constraint_jacobian(model, parameters_s_.q);
 
     eigen_vector_sym_t lambda =
-        create_symbolic_vector("lambda", lambda_v.size());
+        create_symbolic_vector("lambda", constraint.dimension());
 
     dynamics_ -= J.topRows(3).transpose() * lambda;
 

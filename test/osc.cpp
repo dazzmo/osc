@@ -202,6 +202,7 @@ TEST(OSC, FullProgram) {
     program.add_contact_point_3d("left", left_foot);
     program.add_se3_task("pelvis", pelvis);
 
+
     program.get_se3_task("pelvis")->reference.pose.setRandom();
     program.get_se3_task("pelvis")->reference.twist.setZero();
 
@@ -225,7 +226,7 @@ int main(int argc, char **argv) {
     FLAGS_logtostderr = 1;
     FLAGS_colorlogtostderr = 1;
     FLAGS_log_prefix = 1;
-    FLAGS_v = 10;
+    // FLAGS_v = 10;
 
     int status = RUN_ALL_TESTS();
 

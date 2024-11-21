@@ -9,6 +9,10 @@
 
 namespace osc {
 
+/**
+ * @brief Holonomic constraint related to a model
+ *
+ */
 class HolonomicConstraint {
    public:
     typedef double value_type;
@@ -18,6 +22,11 @@ class HolonomicConstraint {
                         const index_type &model_nv)
         : dimension_(dim), model_nq_(model_nq), model_nv_(model_nv) {}
 
+    virtual bopt::linear_constraint<value_type>::shared_ptr
+    create_linear_constraint(const model_sym_t &model) const {
+        return nullptr;
+    };
+
     const index_type &dimension() const { return dimension_; }
 
     const index_type &model_nq() const { return model_nq_; }
@@ -25,6 +34,8 @@ class HolonomicConstraint {
 
     virtual eigen_matrix_sym_t constraint_jacobian(
         const model_sym_t &model, const eigen_vector_sym_t &q) const = 0;
+
+    // todo - to_linear_constraint()
 
    private:
     index_type dimension_;

@@ -28,10 +28,9 @@ class Dynamics {
     void register_actuation(const eigen_matrix_sym_t &B,
                             const eigen_vector_var_t &u_v);
 
-    void add_constraint(const HolonomicConstraint &constraint,
-                        const eigen_vector_var_t &lambda_v);
+    void add_constraint(const HolonomicConstraint &constraint);
 
-    bopt::linear_constraint<value_type>::shared_ptr to_constraint();
+    bopt::linear_constraint<value_type>::shared_ptr create_linear_constraint();
 
    private:
     model_sym_t &model;

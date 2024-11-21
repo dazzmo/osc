@@ -18,6 +18,7 @@ ContactPoint3D::create_friction_constraint(const model_sym_t &model) const {
 
     sym_t limit = mu * f.dot(n);
 
+    // Constraint to indicate | f.dot(t) | <= mu * f.dot(n)
     sym_t constraint = sym_t::zeros(4);
     constraint(0) = f.dot(t) - limit;
     constraint(1) = -f.dot(t) - limit;
@@ -49,7 +50,7 @@ ContactPoint3D::create_friction_bound_constraint(
 }
 
 bopt::linear_constraint<ContactPoint3D::value_type>::shared_ptr
-ContactPoint3D::create_no_slip_constraint(const model_sym_t &model) const {
+ContactPoint3D::create_linear_constraint(const model_sym_t &model) const {
     // Compute the target frame in the contact frame of the model
     eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
     eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
