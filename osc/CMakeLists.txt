@@ -8,6 +8,7 @@ find_package(bopt REQUIRED)
 SET(${PROJECT_NAME}_SOURCES
 common.cpp
 contact.cpp
+cost.cpp
 dynamics.cpp
 osc.cpp
 task.cpp

@@ -1,31 +1,34 @@
 #include "osc/osc.hpp"
 
+#include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+
 namespace osc {
 
-void OSC::loop(const state<eigen_vector_t> &model_state) {
+void OSC::loop(const eigen_vector_t &q, const eigen_vector_t &v) {
     assert(is_initialised_ && "OSC is not initialised!");
     // Update references for all tasks
-    for (std::size_t i = 0; i < model_state.position.size(); ++i) {
-        program.set_parameter(parameters.q[i], model_state.position[i]);
+    for (std::size_t i = 0; i < q.size(); ++i) {
+        program.set_parameter(parameters.q[i], q[i]);
     }
-    for (std::size_t i = 0; i < model_state.velocity.size(); ++i) {
-        program.set_parameter(parameters.v[i], model_state.velocity[i]);
-    }
-
-    for (auto &task : tasks_.position_tasks_) {
-        update_task(model_state, *task.second);
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        program.set_parameter(parameters.v[i], v[i]);
     }
 
-    for (auto &task : tasks_.orientation_tasks_) {
-        update_task(model_state, *task.second);
+    data_t data(model);
+
+    // Update pinocchio model for computations
+    pinocchio::forwardKinematics(model, data, q, v);
+    pinocchio::centerOfMass(model, data, q, v);
+    pinocchio::updateFramePlacements(model, data);
+
+    for (auto &task : get_all_tasks()) {
+        update_task(model, data, task);
     }
 
-    for (auto &task : tasks_.se3_tasks_) {
-        update_task(model_state, *task.second);
-    }
-
-    for (auto &contact : contacts_.contact_3d_) {
-        update_contact_point(model_state, *contact.second);
+    for (auto &contact : get_all_contact_points()) {
+        update_contact_point(model, data, contact);
     }
 
     // Once updated, solve the program

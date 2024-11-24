@@ -6,37 +6,10 @@
 #include "osc/contact.hpp"
 #include "osc/dynamics.hpp"
 #include "osc/task.hpp"
+#include "osc/constraint.hpp"
+#include "osc/cost.hpp"
 
 namespace osc {
-
-/**
- * @brief Visitor class that can be customised and added to a typical OSC
- * instance
- *
- */
-// class osc_visitor {
-//     void init();
-//     void update_references();
-//     void update_parameters();
-// };
-
-struct osc_task_maps {
-    template <typename TaskType>
-    using task_map_t = std::unordered_map<string_t, std::shared_ptr<TaskType>>;
-
-    task_map_t<PositionTask> position_tasks_;
-    task_map_t<OrientationTask> orientation_tasks_;
-    task_map_t<SE3Task> se3_tasks_;
-    task_map_t<Task> generic_tasks_;
-};
-
-struct osc_contact_point_maps {
-    template <typename ContactPointType>
-    using task_map_t =
-        std::unordered_map<string_t, std::shared_ptr<ContactPointType>>;
-
-    task_map_t<ContactPoint3D> contact_3d_;
-};
 
 template <typename VectorType>
 struct osc_variables {
@@ -53,12 +26,9 @@ struct osc_parameters {
 
 class OSC {
    public:
-    typedef state<eigen_vector_t> model_state_t;
-
-    OSC(model_sym_t &model) : model(model), dynamics_(model) {
+    OSC(model_t &model) : model(model), model_sym(model.cast<sym_t>()) {
         // Create system dynamics
         variables.a = create_variable_vector("a", model.nv);
-
         parameters.q = create_variable_vector("q", model.nq);
         parameters.v = create_variable_vector("v", model.nv);
 
@@ -76,8 +46,6 @@ class OSC {
 
     void init() {
         // All tasks added, finalise dynamics constraint
-        add_dynamics_to_program(dynamics_);
-
         qp_ = std::make_unique<bopt::solvers::qpoases_solver_instance>(program);
 
         // Create solver
@@ -88,212 +56,90 @@ class OSC {
      * @brief Loop function that computes the optimal control by solving an OCP
      *
      */
-    void loop(const state<eigen_vector_t> &model_state);
+    void loop(const eigen_vector_t &q, const eigen_vector_t &v);
 
-    void add_position_task(const std::string &name,
-                           std::shared_ptr<PositionTask> &task) {
-        tasks_.position_tasks_.insert({name, task});
+    /**
+     * @brief Add a frame task to the program
+     *
+     * @param name
+     * @param task
+     */
+    void add_frame_task(const std::string &name,
+                        std::shared_ptr<FrameTask> &task) {
+        frame_tasks_index_map_.insert({name, frame_tasks_.size()});
+        frame_tasks_.push_back(task);
         add_task_to_program(*task);
     }
 
-    std::shared_ptr<PositionTask> get_position_task(const string_t &name) {
-        if (tasks_.position_tasks_.find(name) != tasks_.position_tasks_.end()) {
-            return tasks_.position_tasks_.at(name);
+    std::shared_ptr<FrameTask> get_frame_task(const string_t &name) {
+        if (frame_tasks_index_map_.find(name) != frame_tasks_index_map_.end()) {
+            return frame_tasks_[frame_tasks_index_map_.at(name)];
         }
         return nullptr;
     }
 
-    void add_orientation_task(const std::string &name,
-                              std::shared_ptr<OrientationTask> &task) {
-        tasks_.orientation_tasks_.insert({name, task});
+    void add_joint_tracking_task(const std::string &name,
+                                 std::shared_ptr<JointTrackingTask> &task) {
+        joint_tracking_tasks_index_map_.insert(
+            {name, joint_tracking_tasks_.size()});
+        joint_tracking_tasks_.push_back(task);
         add_task_to_program(*task);
     }
 
-    std::shared_ptr<OrientationTask> get_orientation_task(
+    std::shared_ptr<JointTrackingTask> get_joint_tracking_task(
         const string_t &name) {
-        if (tasks_.orientation_tasks_.find(name) !=
-            tasks_.orientation_tasks_.end()) {
-            return tasks_.orientation_tasks_.at(name);
+        if (joint_tracking_tasks_index_map_.find(name) !=
+            joint_tracking_tasks_index_map_.end()) {
+            return joint_tracking_tasks_[joint_tracking_tasks_index_map_.at(
+                name)];
         }
         return nullptr;
     }
 
-    void add_se3_task(const std::string &name, std::shared_ptr<SE3Task> &task) {
-        tasks_.se3_tasks_.insert({name, task});
+    void add_centre_of_mass_task(std::shared_ptr<CentreOfMassTask> &task) {
+        com_task_ = task;
         add_task_to_program(*task);
     }
 
-    std::shared_ptr<SE3Task> get_se3_task(const string_t &name) {
-        if (tasks_.se3_tasks_.find(name) != tasks_.se3_tasks_.end()) {
-            return tasks_.se3_tasks_.at(name);
-        }
-        return nullptr;
+    std::shared_ptr<CentreOfMassTask> get_centre_of_mass_task() {
+        return com_task_;
     }
 
-    template <class TaskType>
-    void add_task_to_program(const TaskType &task) {
-        auto cost = task.to_task_cost(model);
-
-        // program.add_parameter();
-        for (std::size_t i = 0; i < task.parameters_v.w.size(); ++i) {
-            program.add_parameter(task.parameters_v.w[i]);
-        }
-        for (std::size_t i = 0;
-             i < task.parameters_v.desired_task_acceleration.size(); ++i) {
-            program.add_parameter(
-                task.parameters_v.desired_task_acceleration[i]);
-        }
-
-        // Bind to program
-        program.add_quadratic_cost(
-            cost,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(variables.a)},
-            // Parameters
-            {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
-             eigen_to_std_vector<bopt::variable>::convert(parameters.v),
-             // Task-specific parameters
-             eigen_to_std_vector<bopt::variable>::convert(task.parameters_v.w),
-             eigen_to_std_vector<bopt::variable>::convert(
-                 task.parameters_v.desired_task_acceleration)});
+    template <class CostType>
+    void add_cost_to_program(const CostType &cost) {
+        cost.add_to_program(model_sym, *this);
     }
 
     void add_contact_point_3d(const std::string &name,
-                              std::shared_ptr<ContactPoint3D> &contact) {
-        contacts_.contact_3d_.insert({name, contact});
-        add_contact_point_to_program(*contact);
-    }
+                              std::shared_ptr<ContactPoint3D> &contact,
+                              std::shared_ptr<Dynamics> &dynamics) {
+        contact_3d_index_map_.insert({name, contact_3d_.size()});
+        contact_3d_.push_back(contact);
 
-    template <class ContactType>
-    void add_contact_point_to_program(const ContactType &contact) {
-        // Add constraint components
-        add_holonomic_constraint_forces_to_program(contact);
-
-        // Parameters
-        for (std::size_t i = 0; i < contact.parameters_v.epsilon.size(); ++i) {
-            program.add_parameter(contact.parameters_v.epsilon[i]);
-        }
-        for (std::size_t i = 0; i < contact.parameters_v.n.size(); ++i) {
-            program.add_parameter(contact.parameters_v.n[i]);
-        }
-        for (std::size_t i = 0; i < contact.parameters_v.t.size(); ++i) {
-            program.add_parameter(contact.parameters_v.t[i]);
-        }
-        for (std::size_t i = 0; i < contact.parameters_v.b.size(); ++i) {
-            program.add_parameter(contact.parameters_v.b[i]);
-        }
-        for (std::size_t i = 0;
-             i < contact.parameters_v.friction_force_upper_bound.size(); ++i) {
-            program.add_parameter(
-                contact.parameters_v.friction_force_upper_bound[i]);
-        }
-        for (std::size_t i = 0;
-             i < contact.parameters_v.friction_force_lower_bound.size(); ++i) {
-            program.add_parameter(
-                contact.parameters_v.friction_force_lower_bound[i]);
-        }
-        program.add_parameter(contact.parameters_v.mu);
-
-        // Create constraints
-        auto friction_cone = contact.create_friction_constraint(model);
-        auto friction_bound = contact.create_friction_bound_constraint(model);
-        auto no_slip = contact.create_linear_constraint(model);
-
-        // Bind to program
-        program.add_linear_constraint(
-            friction_cone,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(
-                variables.lambda.bottomRows(contact.dimension()))},
-            // contact-specific parameters
-            {eigen_to_std_vector<bopt::variable>::convert(
-                 contact.parameters_v.n),
-             eigen_to_std_vector<bopt::variable>::convert(
-                 contact.parameters_v.t),
-             eigen_to_std_vector<bopt::variable>::convert(
-                 contact.parameters_v.b),
-             {contact.parameters_v.mu}});
-
-        program.add_linear_constraint(
-            no_slip,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(variables.a)},
-            // Parameters
-            {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
-             eigen_to_std_vector<bopt::variable>::convert(parameters.v),
-             // Task-specific parameters
-             eigen_to_std_vector<bopt::variable>::convert(
-                 contact.parameters_v.epsilon)});
-
-        program.add_bounding_box_constraint(
-            friction_bound,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(
-                variables.lambda.bottomRows(contact.dimension()))},
-            // Parameters
-            {eigen_to_std_vector<bopt::variable>::convert(
-                 contact.parameters_v.friction_force_lower_bound),
-             eigen_to_std_vector<bopt::variable>::convert(
-                 contact.parameters_v.friction_force_upper_bound)});
+        add_constraint_to_program(*contact, dynamics);
     }
 
     std::shared_ptr<ContactPoint3D> get_contact_point_3d(const string_t &name) {
-        if (contacts_.contact_3d_.find(name) != contacts_.contact_3d_.end()) {
-            return contacts_.contact_3d_.at(name);
+        if (contact_3d_index_map_.find(name) != contact_3d_index_map_.end()) {
+            return contact_3d_[contact_3d_index_map_.at(name)];
         }
         return nullptr;
     }
 
-    void add_holonomic_constraint_forces_to_program(
-        const HolonomicConstraint &constraint) {
-        // Create new variables
-        eigen_vector_var_t lambda =
-            create_variable_vector("lambda", constraint.dimension());
+    void add_dynamics(std::shared_ptr<Dynamics> &dynamics) {
+        dynamics->add_to_program(model_sym, *this);
+    }
 
-        variables.lambda.conservativeResize(variables.lambda.size() +
-                                            lambda.size());
-        variables.lambda.bottomRows(lambda.size()) = lambda;
+    void add_constraint_to_program(HolonomicConstraint &constraint,
+                                   std::shared_ptr<Dynamics> &dynamics) {
+        // Create new variables
+        add_constraint_forces(
+            create_variable_vector("lambda", constraint.dimension()));
 
         // Add constraint to dynamics
-        dynamics_.add_constraint(constraint);
-
-        // Add lamba to variables
-        for (std::size_t i = 0; i < lambda.size(); ++i) {
-            program.add_variable(lambda[i]);
-        }
-    }
-
-    void add_holonomic_constraint_to_program(
-        const HolonomicConstraint &constraint) {
-        // Register constraint forces
-        add_holonomic_constraint_forces_to_program(constraint);
-
-        auto linear_constraint = constraint.create_linear_constraint(model);
-
-        program.add_linear_constraint(
-            linear_constraint,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(variables.a)},
-            // Parameters
-            {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
-             eigen_to_std_vector<bopt::variable>::convert(parameters.v)});
-    }
-
-    void add_dynamics_to_program(Dynamics &dynamics) {
-        auto dynamics_constraint = dynamics.create_linear_constraint();
-
-        // Create vector for x 
-        eigen_vector_var_t x(variables.a.size() + variables.u.size() + variables.lambda.size());
-        x << variables.a, variables.u, variables.lambda;
-
-        // Bind to program
-        program.add_linear_constraint(
-            dynamics_constraint,
-            // Variables
-            {eigen_to_std_vector<bopt::variable>::convert(x)},
-            // contact-specific parameters
-            {eigen_to_std_vector<bopt::variable>::convert(parameters.q),
-             eigen_to_std_vector<bopt::variable>::convert(parameters.v)});
+        dynamics->add_constraint(constraint);
+        // Add constraint to program
+        constraint.add_to_program(model_sym, *this);
     }
 
     bopt::mathematical_program<double> program;
@@ -301,72 +147,114 @@ class OSC {
     osc_variables<eigen_vector_var_t> variables;
     osc_parameters<eigen_vector_var_t> parameters;
 
+    std::vector<std::shared_ptr<Task>> get_all_tasks() {
+        std::vector<std::shared_ptr<Task>> tasks = {};
+        tasks.insert(tasks.end(), frame_tasks_.begin(), frame_tasks_.end());
+        tasks.insert(tasks.end(), joint_tracking_tasks_.begin(),
+                     joint_tracking_tasks_.end());
+        if (com_task_) tasks.push_back(com_task_);
+        return tasks;
+    }
+
+    std::vector<std::shared_ptr<ContactPoint>> get_all_contact_points() {
+        std::vector<std::shared_ptr<ContactPoint>> contacts = {};
+        contacts.insert(contacts.end(), contact_3d_.begin(), contact_3d_.end());
+        return contacts;
+    }
+
+   private:
+    // Tasks
+    std::unordered_map<std::string, std::size_t> frame_tasks_index_map_;
+    std::unordered_map<std::string, std::size_t>
+        joint_tracking_tasks_index_map_;
+
+    std::vector<std::shared_ptr<FrameTask>> frame_tasks_;
+    std::vector<std::shared_ptr<JointTrackingTask>> joint_tracking_tasks_;
+    std::shared_ptr<CentreOfMassTask> com_task_ = nullptr;
+
+    // Contacts
+    std::unordered_map<std::string, std::size_t> contact_3d_index_map_;
+
+    std::vector<std::shared_ptr<ContactPoint3D>> contact_3d_;
+
+    // Costs
+    std::unordered_map<std::string, std::size_t> costs_index_map_;
+    std::vector<std::shared_ptr<Cost>> costs_;
+
     template <class TaskType>
-    void update_task(const model_state_t &model_state, TaskType &task) {
-        // Set weighting
-        // program.set_parameter(task.parameters().w, task.parameters().w);
-        typedef typename task_traits<TaskType>::task_state_t task_state_t;
-        typedef typename task_traits<TaskType>::task_error_t task_error_t;
-        typedef typename task_traits<TaskType>::reference_t reference_t;
+    void add_task_to_program(TaskType &task) {
+        task.add_to_program(model_sym, *this);
+    }
 
-        task_state_t task_state;
-        // Evaluate task error
-        task.get_task_state(model_state, task_state);
-        task_error_t task_error(task.dimension());
-        task.get_task_error(task_state, task_error);
+    template <class TaskType>
+    void update_task(const model_t &model, const data_t &data, TaskType &task) {
+        task_error<eigen_vector_t> e(task->dimension());
+        task->compute_task_error(model, data, e);
 
-        // Set desired acceleration as PID output
-        task.parameters().desired_task_acceleration =
-            task.pid.compute(task_error);
+        // Compute desired acceleration
+        task->parameters().xacc_d = task->pid.compute(e);
 
-        for (std::size_t i = 0; i < task.parameters().w.size(); ++i) {
-            program.set_parameter(task.parameters_v.w[i],
-                                  task.parameters().w[i]);
+        // Update parameters
+        for (std::size_t i = 0; i < task->dimension(); ++i) {
+            program.set_parameter(task->parameters_v.w[i],
+                                  task->parameters_d.w[i]);
+            program.set_parameter(task->parameters_v.xacc_d[i],
+                                  task->parameters_d.xacc_d[i]);
         }
     }
 
     template <class ContactPoint>
-    void update_contact_point(const model_state_t &model_state,
+    void update_contact_point(const model_t &model, const data_t &data,
                               ContactPoint &contact) {
         // todo - detect a change in contact to minimise variable setting
-        if (contact.in_contact) {
-            for (std::size_t i = 0; i < contact.dimension(); ++i) {
-                // program.set_parameter(
-                //     contact.parameters_v.friction_force_upper_bound[i],
-                //     contact.parameters().friction_force_upper_bound[i]);
+        if (contact->in_contact) {
+            for (std::size_t i = 0; i < contact->dimension(); ++i) {
+                program.set_parameter(contact->parameters_v.lambda_ub[i],
+                                      contact->parameters().lambda_ub[i]);
 
-                // program.set_parameter(
-                //     contact.parameters_v.friction_force_lower_bound[i],
-                //     contact.parameters().friction_force_lower_bound[i]);
+                program.set_parameter(contact->parameters_v.lambda_lb[i],
+                                      contact->parameters().lambda_lb[i]);
             }
 
             for (std::size_t i = 0; i < 3; ++i) {
-                program.set_parameter(contact.parameters_v.n[i],
-                                      contact.parameters().n[i]);
-                program.set_parameter(contact.parameters_v.t[i],
-                                      contact.parameters().t[i]);
-                program.set_parameter(contact.parameters_v.b[i],
-                                      contact.parameters().b[i]);
+                program.set_parameter(contact->parameters_v.n[i],
+                                      contact->parameters().n[i]);
+                program.set_parameter(contact->parameters_v.t[i],
+                                      contact->parameters().t[i]);
+                program.set_parameter(contact->parameters_v.b[i],
+                                      contact->parameters().b[i]);
             }
-            program.set_parameter(contact.parameters_v.mu,
-                                  contact.parameters().mu);
-            // contact.parameters().friction_force_lower_bound =
-            // contact.parameters().friction_force_upper_bound =
+            program.set_parameter(contact->parameters_v.mu,
+                                  contact->parameters().mu);
         } else {
+            for (std::size_t i = 0; i < contact->dimension(); ++i) {
+                program.set_parameter(contact->parameters_v.lambda_ub[i], 0.0);
+
+                program.set_parameter(contact->parameters_v.lambda_lb[i], 0.0);
+            }
         }
     }
 
-   private:
-    // Task map
-    osc_task_maps tasks_;
-    // Contact map
-    osc_contact_point_maps contacts_;
+    /**
+     * @brief Adds force variables to the program
+     *
+     * @param lambda
+     */
+    void add_constraint_forces(const eigen_vector_var_t &lambda) {
+        variables.lambda.conservativeResize(variables.lambda.size() +
+                                            lambda.size());
+        variables.lambda.bottomRows(lambda.size()) << lambda;
 
-    // System dynamics
-    Dynamics dynamics_;
+        // Add lamba to variables
+        for (std::size_t i = 0; i < lambda.size(); ++i) {
+            program.add_variable(lambda[i]);
+        }
+    }
 
+    // Model
+    model_t model;
     // Symbolic model
-    model_sym_t &model;
+    model_sym_t model_sym;
 
     // Initialisation flag
     bool is_initialised_ = false;

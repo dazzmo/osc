@@ -1,4 +1,5 @@
 #include "osc/task.hpp"
+#include "osc/osc.hpp"
 
 #include <bopt/ad/casadi/casadi.hpp>
 #include <pinocchio/algorithm/center-of-mass.hpp>
@@ -7,48 +8,53 @@
 
 namespace osc {
 
-PositionTask::PositionTask(const model_sym_t &model, const std::string &target,
-                           const std::string &reference_frame)
-    : Task(3, model.nq, model.nv),
-      target_frame(target),
-      reference_frame(reference_frame) {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a(model_nv());
-    a.setZero();
-
-    // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target, reference_frame);
-
-    // Create expression evaluators
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
-
-    sym_t xpos_s =
-        eigen_to_casadi<sym_elem_t>::convert(frame.pos.translation());
-    sym_t xvel_s = eigen_to_casadi<sym_elem_t>::convert(frame.vel.linear());
-
-    xpos = std::make_unique<expression_evaluator_t>(xpos_s,
-                                                    sym_vector_t({q_s, v_s}));
-    xvel = std::make_unique<expression_evaluator_t>(xvel_s,
-                                                    sym_vector_t({q_s, v_s}));
+FrameTask::FrameTask(const model_sym_t &model, const std::string &frame,
+                     const Type &type, const std::string &reference_frame)
+    : Task(), frame(frame), reference_frame(reference_frame) {
+    // Ensure the model has the provided frames
+    if (model.getFrameId(frame) == model.frames.size()) {
+        assert("Model does not have specified frame");
+    }
+    if (model.getFrameId(reference_frame) == model.frames.size()) {
+        assert("Model does not have specified reference frame");
+    }
+    if (type == Type::Position) {
+        set_dimension(3);
+    } else if (type == Type::Orientation) {
+        set_dimension(3);
+    } else if (type == Type::Full) {
+        set_dimension(6);
+    }
 }
 
-bopt::quadratic_cost<PositionTask::value_type>::shared_ptr
-PositionTask::to_task_cost(const model_sym_t &model) const {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
+void FrameTask::add_to_program(const model_sym_t &model, OSC &osc_program) {
+    // Add to program
+    eigen_vector_sym_t q = create_symbolic_vector("q", model.nq);
+    eigen_vector_sym_t v = create_symbolic_vector("v", model.nv);
+    eigen_vector_sym_t a = create_symbolic_vector("a", model.nv);
 
     eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
     eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
 
-    // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target_frame, reference_frame);
+    pinocchio::DataTpl<sym_t> data(model);
 
-    eigen_vector_sym_t dxacc = frame.acc.linear() - xacc_d;
+    // Compute the kinematic tree state of the system
+    pinocchio::forwardKinematics(model, data, q, v, a);
+    pinocchio::updateFramePlacements(model, data);
+
+    // Compute the acceleration of the target frame in its LOCAL frame
+    pinocchio::MotionTpl<sym_t> acc = pinocchio::getFrameClassicalAcceleration(
+        model, data, model.getFrameId(frame));
+
+    // Determine error in frame acceleration (in LOCAL frame)
+    eigen_vector_sym_t e;
+    if (type == Type::Position) {
+        e = acc.linear() - xacc_d;
+    } else if (type == Type::Orientation) {
+        e = acc.angular() - xacc_d;
+    } else if (type == Type::Full) {
+        e = acc.toVector() - xacc_d;
+    }
 
     sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
     sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
@@ -57,208 +63,184 @@ PositionTask::to_task_cost(const model_sym_t &model) const {
     sym_t xacc_d_s = eigen_to_casadi<sym_elem_t>::convert(xacc_d);
 
     // Compute weighted squared norm
-    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
+    sym_t cost = e.transpose() * w.asDiagonal() * e;
 
-    // Concatenate parameters
-    sym_t p = sym_t::vertcat({q_s, v_s, w_s, xacc_d_s});
+    // Register parameters with the program
+    for (std::size_t i = 0; i < parameters_v.w.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.w[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.xacc_d.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.xacc_d[i]);
+    }
 
-    return bopt::casadi::quadratic_cost<value_type>::create(cost, a_s,
-                                                            sym_vector_t({p}));
-}
+    osc_program.program.add_quadratic_cost(
+        bopt::casadi::quadratic_cost<value_type>::create(
+            cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s})),
+        // Variables
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.variables.a)},
+        // Parameters
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.q),
+         eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.v),
+         // Task-specific parameters
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.w),
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.xacc_d)});
+};
 
-OrientationTask::OrientationTask(const model_sym_t &model,
-                                 const std::string &target,
-                                 const std::string &reference_frame)
-    : Task(3, model.nq, model.nv),
-      target_frame(target),
-      reference_frame(reference_frame) {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a(model_nv());
-    a.setZero();
+void FrameTask::compute_task_error(const model_t &model, const data_t &data,
+                                   error_t &e) {
+    // Frame wrt world
+    const se3_t &oMf = data.oMf[model.getFrameId(frame)];
+    // Reference wrt world
+    const se3_t &oMr = data.oMf[model.getFrameId(reference_frame)];
+    // Target wrt world
+    se3_t oMt = oMr.act(target.pose);
+    // Target wrt frame
+    se3_t fMt = oMf.actInv(oMt);
 
-    // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target, reference_frame);
+    // Compute the error of the system in the local frame
+    if (type == Type::Position) {
+        e.error = pinocchio::log6(fMt).linear();
+    } else if (type == Type::Orientation) {
+        e.error = pinocchio::log6(fMt).angular();
+    } else if (type == Type::Full) {
+        e.error = pinocchio::log6(fMt).toVector();
+    }
 
-    // Create expression evaluators
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
+    // Compute the rate of change of frame
+    auto tMf = oMt.actInv(oMf);
 
-    // Flatten rotation matrix
-    eigen_vector_sym_t rotation_vec(Eigen::Map<eigen_vector_sym_t>(
-        frame.pos.rotation().data(),
-        frame.pos.rotation().cols() * frame.pos.rotation().rows()));
+    // Construct jacobian of the logarithm map
+    // Eigen::Matrix<double, 6, 6> Jlog;
+    // pinocchio::Jlog6(tMf, Jlog);
 
-    sym_t xpos_s = eigen_to_casadi<sym_elem_t>::convert(rotation_vec);
-    sym_t xvel_s = eigen_to_casadi<sym_elem_t>::convert(frame.vel.linear());
+    // Todo - map the error in the velocity into the frame?
 
-    xpos = std::make_unique<expression_evaluator_t>(xpos_s,
-                                                    sym_vector_t({q_s, v_s}));
-    xvel = std::make_unique<expression_evaluator_t>(xvel_s,
-                                                    sym_vector_t({q_s, v_s}));
-}
+    twist_t v =
+        pinocchio::getFrameVelocity(model, data, model.getFrameId(frame));
 
-bopt::quadratic_cost<OrientationTask::value_type>::shared_ptr
-OrientationTask::to_task_cost(const model_sym_t &model) const {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
-
-    eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
-    eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
-
-    // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target_frame, reference_frame);
-
-    eigen_vector_sym_t dxacc = frame.acc.angular() - xacc_d;
-
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
-    sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
-    sym_t w_s = eigen_to_casadi<sym_elem_t>::convert(w);
-    sym_t xacc_d_s = eigen_to_casadi<sym_elem_t>::convert(xacc_d);
-
-    // Compute weighted squared norm
-    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
-
-    return bopt::casadi::quadratic_cost<value_type>::create(
-        cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s}));
+    if (type == Type::Position) {
+        e.error_dot = v.linear();
+    } else if (type == Type::Orientation) {
+        e.error_dot = v.angular();
+    } else if (type == Type::Full) {
+        e.error_dot = v.toVector();
+    }
 }
 
 CentreOfMassTask::CentreOfMassTask(const model_sym_t &model,
-                                   const std::string &reference_frame) {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
+                                   const std::string &reference_frame)
+    : Task(3), reference_frame(reference_frame) {}
+
+void CentreOfMassTask::add_to_program(const model_sym_t &model,
+                                      OSC &osc_program) {
+    eigen_vector_sym_t q = create_symbolic_vector("q", model.nq);
+    eigen_vector_sym_t v = create_symbolic_vector("v", model.nv);
+    eigen_vector_sym_t a = create_symbolic_vector("a", model.nv);
+
+    eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
+    eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
 
     pinocchio::DataTpl<sym_t> data(model);
 
-    // Compute frame state
-    pinocchio::forwardKinematics(model, data, q, v);
+    // Compute the kinematic tree state of the system
+    pinocchio::forwardKinematics(model, data, q, v, a);
+    pinocchio::centerOfMass(model, data, false);
     pinocchio::updateFramePlacements(model, data);
 
-    if (model.getFrameId(reference_frame) == model.frames.size()) {
-        assert("No reference frame");
+    // Compute the acceleration of the target frame in its LOCAL frame
+    eigen_vector_sym_t com_acc = data.acom[0];
+
+    // Determine error in frame acceleration (in LOCAL frame)
+    eigen_vector_sym_t e = com_acc - xacc_d;
+
+    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
+    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
+    sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
+    sym_t w_s = eigen_to_casadi<sym_elem_t>::convert(w);
+    sym_t xacc_d_s = eigen_to_casadi<sym_elem_t>::convert(xacc_d);
+
+    // Compute weighted squared norm
+    sym_t cost = e.transpose() * w.asDiagonal() * e;
+
+    // Register parameters with the program
+    for (std::size_t i = 0; i < parameters_v.w.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.w[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.xacc_d.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.xacc_d[i]);
     }
 
-    typedef pinocchio::SE3Tpl<sym_t> se3_t;
-    typedef pinocchio::MotionTpl<sym_t> motion_t;
-
-    se3_t oMb = data.oMf[model.getFrameId(reference_frame)];
-
-    pinocchio::centerOfMass(model, data, q, v, false);
-
-    // Get data for centre of mass
-    eigen_vector_sym_t com = oMb.actInv(data.com[0]),
-                       com_vel = oMb.actInv(data.vcom[0]);
-
-    // Create expression evaluators
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
-
-    sym_t com_s = eigen_to_casadi<sym_elem_t>::convert(com);
-    sym_t com_vel_s = eigen_to_casadi<sym_elem_t>::convert(com_vel);
-
-    xpos = std::make_unique<expression_evaluator_t>(com_s,
-                                                    sym_vector_t({q_s, v_s}));
-    xvel = std::make_unique<expression_evaluator_t>(com_vel_s,
-                                                    sym_vector_t({q_s, v_s}));
+    osc_program.program.add_quadratic_cost(
+        bopt::casadi::quadratic_cost<value_type>::create(
+            cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s})),
+        // Variables
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.variables.a)},
+        // Parameters
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.q),
+         eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.v),
+         // Task-specific parameters
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.w),
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.xacc_d)});
 }
 
-bopt::quadratic_cost<CentreOfMassTask::value_type>::shared_ptr
-CentreOfMassTask::to_task_cost(const model_sym_t &model) const {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
+void CentreOfMassTask::compute_task_error(const model_t &model,
+                                          const data_t &data, error_t &e) {
+    // Compute centre of mass with respect to reference frame
+    e.error = data.oMf[model.getFrameId(reference_frame)].actInv(data.com[0]) -
+              reference.position;
+    // Also compute centre of mass velocity
+    e.error_dot =
+        data.oMf[model.getFrameId(reference_frame)].actInv(data.vcom[0]) -
+        reference.velocity;
+}
 
+JointTrackingTask::JointTrackingTask(const model_sym_t &model)
+
+    : Task(model.nq) {}
+
+void JointTrackingTask::add_to_program(const model_sym_t &model,
+                                       OSC &osc_program) {
+    eigen_vector_sym_t a = create_symbolic_vector("a", model.nv);
     eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
     eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
 
-    pinocchio::DataTpl<sym_t> data(model);
+    // Determine error in frame acceleration (in LOCAL frame)
+    eigen_vector_sym_t e = a - xacc_d;
 
-    pinocchio::centerOfMass(model, data, q, v, a, false);
-
-    auto oMb = data.oMf[model.getFrameId(reference_frame)];
-
-    pinocchio::centerOfMass(model, data, q, v, a, false);
-
-    eigen_vector_sym_t dxacc = oMb.actInv(data.acom[0]) - xacc_d;
-
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
     sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
     sym_t w_s = eigen_to_casadi<sym_elem_t>::convert(w);
     sym_t xacc_d_s = eigen_to_casadi<sym_elem_t>::convert(xacc_d);
 
     // Compute weighted squared norm
-    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
+    sym_t cost = e.transpose() * w.asDiagonal() * e;
 
-    return bopt::casadi::quadratic_cost<value_type>::create(
-        cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s}));
+    // Register parameters with the program
+    for (std::size_t i = 0; i < parameters_v.w.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.w[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.xacc_d.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.xacc_d[i]);
+    }
+
+    osc_program.program.add_quadratic_cost(
+        bopt::casadi::quadratic_cost<value_type>::create(
+            cost, a_s, sym_vector_t({w_s, xacc_d_s})),
+        // Variables
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.variables.a)},
+        // Parameters
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.q),
+         eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.v),
+         // Task-specific parameters
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.w),
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.xacc_d)});
 }
 
-SE3Task::SE3Task(const model_sym_t &model, const std::string &target,
-                 const std::string &reference_frame)
-    : Task(6, model.nq, model.nv),
-      target_frame(target),
-      reference_frame(reference_frame) {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a(model_nv());
-    a.setZero();
-
-    // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target, reference_frame);
-
-    // Create expression evaluators
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
-
-    // Flatten rotation matrix
-    eigen_vector_sym_t rotation_vec(Eigen::Map<eigen_vector_sym_t>(
-        frame.pos.rotation().data(),
-        frame.pos.rotation().cols() * frame.pos.rotation().rows()));
-
-    eigen_vector_sym_t x(3 + 9);
-    x << frame.pos.translation(), rotation_vec;
-
-    sym_t x_s = eigen_to_casadi<sym_elem_t>::convert(x);
-    sym_t xvel_s = eigen_to_casadi<sym_elem_t>::convert(frame.vel.toVector());
-
-    xpos =
-        std::make_unique<expression_evaluator_t>(x_s, sym_vector_t({q_s, v_s}));
-    xvel = std::make_unique<expression_evaluator_t>(xvel_s,
-                                                    sym_vector_t({q_s, v_s}));
-}
-
-bopt::quadratic_cost<SE3Task::value_type>::shared_ptr SE3Task::to_task_cost(
-    const model_sym_t &model) const {
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
-
-    eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
-    eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
-
-    // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target_frame, reference_frame);
-
-    eigen_vector_sym_t dxacc = frame.acc.toVector() - xacc_d;
-
-    sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
-    sym_t v_s = eigen_to_casadi<sym_elem_t>::convert(v);
-    sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
-    sym_t w_s = eigen_to_casadi<sym_elem_t>::convert(w);
-    sym_t xacc_d_s = eigen_to_casadi<sym_elem_t>::convert(xacc_d);
-
-    // Compute weighted squared norm
-    sym_t cost = dxacc.transpose() * w.asDiagonal() * dxacc;
-
-    return bopt::casadi::quadratic_cost<value_type>::create(
-        cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s}));
+void JointTrackingTask::compute_task_error(const model_t &model,
+                                           const data_t &data, error_t &e) {
+    // Compute centre of mass with respect to reference frame
+    e.error = reference.joint_position;
+    // Also compute centre of mass velocity
+    e.error_dot = reference.joint_velocity;
 }
 
 }  // namespace osc

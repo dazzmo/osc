@@ -1,4 +1,5 @@
 #include "osc/contact.hpp"
+#include "osc/osc.hpp"
 
 namespace osc {
 
@@ -50,16 +51,23 @@ ContactPoint3D::create_friction_bound_constraint(
 }
 
 bopt::linear_constraint<ContactPoint3D::value_type>::shared_ptr
-ContactPoint3D::create_linear_constraint(const model_sym_t &model) const {
+ContactPoint3D::create_no_slip_constraint(const model_sym_t &model) const {
     // Compute the target frame in the contact frame of the model
-    eigen_vector_sym_t q = create_symbolic_vector("q", model_nq());
-    eigen_vector_sym_t v = create_symbolic_vector("v", model_nv());
-    eigen_vector_sym_t a = create_symbolic_vector("a", model_nv());
+    eigen_vector_sym_t q = create_symbolic_vector("q", model.nq);
+    eigen_vector_sym_t v = create_symbolic_vector("v", model.nv);
+    eigen_vector_sym_t a = create_symbolic_vector("a", model.nv);
     eigen_vector_sym_t e = create_symbolic_vector("e", dimension());
 
     // Compute frame state
-    frame_state<sym_t> frame =
-        get_frame_state(model, q, v, a, target_frame, "universe");
+    pinocchio::DataTpl<sym_t> data(model);
+
+    // Compute the kinematic tree state of the system
+    pinocchio::forwardKinematics(model, data, q, v, a);
+    pinocchio::updateFramePlacements(model, data);
+
+    // Compute the acceleration of the target frame in its LOCAL frame
+    pinocchio::MotionTpl<sym_t> acc = pinocchio::getFrameClassicalAcceleration(
+        model, data, model.getFrameId(frame), pinocchio::WORLD);
 
     // Create expression evaluators
     sym_t q_s = eigen_to_casadi<sym_elem_t>::convert(q);
@@ -68,14 +76,73 @@ ContactPoint3D::create_linear_constraint(const model_sym_t &model) const {
     sym_t e_s = eigen_to_casadi<sym_elem_t>::convert(e);
 
     // No slip condition => xacc = J qacc + \dot J qvel = epsilon
-    sym_t constraint =
-        eigen_to_casadi<sym_elem_t>::convert(frame.acc.linear() - e);
+    sym_t constraint = eigen_to_casadi<sym_elem_t>::convert(acc.linear() - e);
 
     // todo - need to consider the frame transformation from contact frame to
     // todo - end-effector frame
 
     return bopt::casadi::linear_constraint<value_type>::create(
         constraint, a_s, sym_vector_t({q_s, v_s, e_s}));
+}
+
+void ContactPoint3D::add_to_program(const model_sym_t &model,
+                                    OSC &osc_program) {
+    // Parameters
+    for (std::size_t i = 0; i < parameters_v.epsilon.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.epsilon[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.n.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.n[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.t.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.t[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.b.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.b[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.lambda_ub.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.lambda_ub[i]);
+    }
+    for (std::size_t i = 0; i < parameters_v.lambda_lb.size(); ++i) {
+        osc_program.program.add_parameter(parameters_v.lambda_lb[i]);
+    }
+    osc_program.program.add_parameter(parameters_v.mu);
+
+    // Create constraints
+    auto friction_cone = create_friction_constraint(model);
+    auto friction_bound = create_friction_bound_constraint(model);
+    auto no_slip = create_no_slip_constraint(model);
+
+    // Bind to program
+    osc_program.program.add_linear_constraint(
+        friction_cone,
+        // Variables
+        {eigen_to_std_vector<bopt::variable>::convert(
+            osc_program.variables.lambda.bottomRows(dimension()))},
+        // contact-specific parameters
+        {eigen_to_std_vector<bopt::variable>::convert(parameters_v.n),
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.t),
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.b),
+         {parameters_v.mu}});
+
+    osc_program.program.add_linear_constraint(
+        no_slip,
+        // Variables
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.variables.a)},
+        // Parameters
+        {eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.q),
+         eigen_to_std_vector<bopt::variable>::convert(osc_program.parameters.v),
+         // Task-specific parameters
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.epsilon)});
+
+    osc_program.program.add_bounding_box_constraint(
+        friction_bound,
+        // Variables
+        {eigen_to_std_vector<bopt::variable>::convert(
+            osc_program.variables.lambda.bottomRows(dimension()))},
+        // Parameters
+        {eigen_to_std_vector<bopt::variable>::convert(parameters_v.lambda_lb),
+         eigen_to_std_vector<bopt::variable>::convert(parameters_v.lambda_ub)});
 }
 
 }  // namespace osc

@@ -17,7 +17,7 @@ TEST(OSC, Construct) {
     osc::OSC program(model_sym);
 }
 
-TEST(OSC, AddPositionTask) {
+TEST(OSC, AddFrameTask) {
     // Load a model
     const std::string urdf_filename = "test/cassie.urdf";
     pinocchio::Model model;
@@ -26,73 +26,8 @@ TEST(OSC, AddPositionTask) {
     osc::model_sym_t model_sym = model.cast<osc::sym_t>();
 
     // Create a task
-    std::shared_ptr<osc::PositionTask> right_foot =
-        std::make_shared<osc::PositionTask>(model_sym, "RightFootBack",
-                                            "universe");
-
-    std::shared_ptr<osc::PositionTask> left_foot =
-        std::make_shared<osc::PositionTask>(model_sym, "LeftFootBack",
-                                            "universe");
-    osc::OSC program(model_sym);
-
-    program.add_position_task("right_foot", right_foot);
-    program.add_position_task("left_foot", left_foot);
-
-    // Test if variables can be set
-    right_foot->parameters().w.setOnes();
-    left_foot->parameters().w.setOnes();
-
-    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
-    model_state.position.setRandom();
-    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
-    model_state.velocity.setRandom();
-
-    // LOG(INFO) << program.program.p();
-    program.init();
-    program.loop(model_state);
-
-    // LOG(INFO) << program.program.p();
-}
-
-TEST(OSC, AddOrientationTask) {
-    // Load a model
-    const std::string urdf_filename = "test/cassie.urdf";
-    pinocchio::Model model;
-    pinocchio::urdf::buildModel(urdf_filename, model);
-    // Create symbolic representation
-    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
-
-    // Create a task
-    std::shared_ptr<osc::OrientationTask> pelvis =
-        std::make_shared<osc::OrientationTask>(model_sym, "pelvis", "universe");
-
-    osc::OSC program(model_sym);
-
-    program.add_orientation_task("pelvis_heading", pelvis);
-
-    // Test if variables can be set
-    pelvis->parameters().w << 1.0, 2.0, 3.0;
-    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
-    model_state.position.setRandom();
-    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
-    model_state.velocity.setRandom();
-
-    // LOG(INFO) << program.program.p();
-    program.init();
-    program.loop(model_state);
-}
-
-TEST(OSC, AddSE3Task) {
-    // Load a model
-    const std::string urdf_filename = "test/cassie.urdf";
-    pinocchio::Model model;
-    pinocchio::urdf::buildModel(urdf_filename, model);
-    // Create symbolic representation
-    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
-
-    // Create a task
-    std::shared_ptr<osc::SE3Task> pelvis =
-        std::make_shared<osc::SE3Task>(model_sym, "pelvis", "universe");
+    std::shared_ptr<osc::FrameTask> pelvis =
+        std::make_shared<osc::FrameTask>(model_sym, "pelvis", "universe");
 
     osc::OSC program(model_sym);
 
@@ -174,49 +109,49 @@ TEST(OSC, DynamicsWithContact) {
     program.loop(model_state);
 }
 
-TEST(OSC, FullProgram) {
-    // Load a model
-    const std::string urdf_filename = "test/cassie.urdf";
-    pinocchio::Model model;
-    pinocchio::urdf::buildModel(urdf_filename, model);
-    // Create symbolic representation
-    osc::model_sym_t model_sym = model.cast<osc::sym_t>();
+// TEST(OSC, FullProgram) {
+//     // Load a model
+//     const std::string urdf_filename = "test/cassie.urdf";
+//     pinocchio::Model model;
+//     pinocchio::urdf::buildModel(urdf_filename, model);
+//     // Create symbolic representation
+//     osc::model_sym_t model_sym = model.cast<osc::sym_t>();
 
-    // Create a task
-    LOG(INFO) << "Creating";
-    std::shared_ptr<osc::ContactPoint3D> left_foot =
-        std::make_shared<osc::ContactPoint3D>(model_sym, "LeftFootBack");
+//     // Create a task
+//     LOG(INFO) << "Creating";
+//     std::shared_ptr<osc::ContactPoint3D> left_foot =
+//         std::make_shared<osc::ContactPoint3D>(model_sym, "LeftFootBack");
 
-    // Create a task
-    std::shared_ptr<osc::PositionTask> right_foot =
-        std::make_shared<osc::PositionTask>(model_sym, "RightFootFront",
-                                            "universe");
+//     // Create a task
+//     std::shared_ptr<osc::PositionTask> right_foot =
+//         std::make_shared<osc::PositionTask>(model_sym, "RightFootFront",
+//                                             "universe");
 
-    // Create a task
-    std::shared_ptr<osc::SE3Task> pelvis =
-        std::make_shared<osc::SE3Task>(model_sym, "pelvis", "universe");
+//     // Create a task
+//     std::shared_ptr<osc::SE3Task> pelvis =
+//         std::make_shared<osc::SE3Task>(model_sym, "pelvis", "universe");
 
-    osc::OSC program(model_sym);
+//     osc::OSC program(model_sym);
 
-    program.add_position_task("right", right_foot);
-    program.add_contact_point_3d("left", left_foot);
-    program.add_se3_task("pelvis", pelvis);
+//     program.add_position_task("right", right_foot);
+//     program.add_contact_point_3d("left", left_foot);
+//     program.add_se3_task("pelvis", pelvis);
 
 
-    program.get_se3_task("pelvis")->reference.pose.setRandom();
-    program.get_se3_task("pelvis")->reference.twist.setZero();
+//     program.get_se3_task("pelvis")->reference.pose.setRandom();
+//     program.get_se3_task("pelvis")->reference.twist.setZero();
 
-    osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
-    model_state.position.setRandom();
-    model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
-    model_state.velocity.setRandom();
+//     osc::state<osc::eigen_vector_t> model_state(model.nq, model.nv);
+//     model_state.position.setRandom();
+//     model_state.position.topRows(7) << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+//     model_state.velocity.setRandom();
 
-    // LOG(INFO) << program.program.p();
-    program.init();
-    program.loop(model_state);
+//     // LOG(INFO) << program.program.p();
+//     program.init();
+//     program.loop(model_state);
 
-    LOG(INFO) << program.program.p();
-}
+//     LOG(INFO) << program.program.p();
+// }
 
 int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);

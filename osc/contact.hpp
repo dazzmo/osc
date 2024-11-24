@@ -1,9 +1,11 @@
 #pragma once
 
-#include "osc/task.hpp"
 #include "osc/constraint.hpp"
+#include "osc/task.hpp"
 
 namespace osc {
+
+class OSC;
 
 struct contact_point_traits {};
 
@@ -23,9 +25,9 @@ struct contact_point_parameters {
     VectorType b;
 
     // Upper bound for frictional force
-    VectorType friction_force_upper_bound;
+    VectorType lambda_ub;
     // Lower bound for frictional force
-    VectorType friction_force_lower_bound;
+    VectorType lambda_lb;
 };
 
 class ContactPoint : public HolonomicConstraint {
@@ -40,7 +42,7 @@ class ContactPoint : public HolonomicConstraint {
 
     ContactPoint(const index_type &dim, const index_type &model_nq,
                  const index_type &model_nv, const string_t &target)
-        : HolonomicConstraint(dim, model_nq, model_nv), target_frame(target) {
+        : HolonomicConstraint(dim), frame(target) {
         parameters_v.epsilon = create_variable_vector("eps", dimension());
         parameters_d.epsilon = eigen_vector_t::Zero(dimension());
 
@@ -53,16 +55,16 @@ class ContactPoint : public HolonomicConstraint {
         parameters_v.b = create_variable_vector("b", dimension());
         parameters_d.b = eigen_vector_t::Zero(dimension());
 
-        parameters_v.friction_force_upper_bound =
-            create_variable_vector("friction_force_upper_bound", dimension());
-        parameters_d.friction_force_upper_bound =
-            eigen_vector_t::Zero(dimension());
+        parameters_v.lambda_ub =
+            create_variable_vector("lambda_ub", dimension());
+        parameters_d.lambda_ub = eigen_vector_t::Zero(dimension());
 
-        parameters_v.friction_force_lower_bound =
-            create_variable_vector("friction_force_lower_bound", dimension());
-        parameters_d.friction_force_lower_bound =
-            eigen_vector_t::Zero(dimension());
+        parameters_v.lambda_lb =
+            create_variable_vector("lambda_lb", dimension());
+        parameters_d.lambda_lb = eigen_vector_t::Zero(dimension());
     }
+
+
 
     virtual bopt::linear_constraint<value_type>::shared_ptr
     create_friction_constraint(const model_sym_t &model) const = 0;
@@ -76,6 +78,7 @@ class ContactPoint : public HolonomicConstraint {
      */
     eigen_matrix_sym_t constraint_jacobian(
         const model_sym_t &model, const eigen_vector_sym_t &q) const override {
+            
         pinocchio::DataTpl<sym_t> data(model);
 
         // Compute the kinematic tree state of the system
@@ -83,8 +86,7 @@ class ContactPoint : public HolonomicConstraint {
         pinocchio::updateFramePlacements(model, data);
 
         eigen_matrix_sym_t J = eigen_matrix_sym_t::Zero(6, model.nv);
-        pinocchio::computeFrameJacobian(model, data, q,
-                                        model.getFrameId(target_frame),
+        pinocchio::computeFrameJacobian(model, data, q, model.getFrameId(frame),
                                         pinocchio::ReferenceFrame::WORLD, J);
 
         return J;
@@ -92,7 +94,7 @@ class ContactPoint : public HolonomicConstraint {
 
     bool in_contact = false;
 
-    string_t target_frame;
+    string_t frame;
 
     contact_point_parameters<eigen_vector_t, value_type> &parameters() {
         return parameters_d;
@@ -136,13 +138,27 @@ class ContactPoint3D : public ContactPoint {
      * @param model
      * @return bopt::linear_constraint<value_type>::shared_ptr
      */
-    bopt::linear_constraint<value_type>::shared_ptr create_linear_constraint(
-        const model_sym_t &model) const override;
+    bopt::linear_constraint<value_type>::shared_ptr create_no_slip_constraint(
+        const model_sym_t &model) const;
 
     eigen_matrix_sym_t constraint_jacobian(const model_sym_t &model,
                                            const eigen_vector_sym_t &q) const {
         return ContactPoint::constraint_jacobian(model, q).topRows(3);
     }
+
+   protected:
+
+       /**
+     * @brief Registers the contact as a constraint within the provided program.
+     *
+     * @param model
+     * @param osc_program
+     *
+     * @note This assumes that constraint forces lambda have been added to the
+     * program before this is called, such that the forces used will be the last
+     * dimension() variables of lambda in the program.
+     */
+    void add_to_program(const model_sym_t &model, OSC &osc_program) override;
 
    private:
 };
