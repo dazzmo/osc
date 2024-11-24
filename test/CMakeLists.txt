@@ -19,3 +19,6 @@ foreach(current_file IN LISTS TEST_FILES)
     add_executable("${current_name}_unit_test" ${current_file})
     target_link_libraries("${current_name}_unit_test" osc GTest::gtest_main glog gflags)
 endforeach()
+
+# Install URDF to build folder
+configure_file("${CMAKE_SOURCE_DIR}/test/cassie.urdf" "${CMAKE_BINARY_DIR}/cassie.urdf" COPYONLY)

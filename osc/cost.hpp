@@ -59,6 +59,8 @@ class Cost {
 
 class EffortSquaredCost : public Cost {
    public:
+    friend class OSC;
+
     EffortSquaredCost() {}
 
     void add_to_program(const model_sym_t &model, OSC &osc_program) override;

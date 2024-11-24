@@ -10,7 +10,7 @@ namespace osc {
 
 FrameTask::FrameTask(const model_sym_t &model, const std::string &frame,
                      const Type &type, const std::string &reference_frame)
-    : Task(), frame(frame), reference_frame(reference_frame) {
+    : Task(), frame(frame), type(type), reference_frame(reference_frame) {
     // Ensure the model has the provided frames
     if (model.getFrameId(frame) == model.frames.size()) {
         assert("Model does not have specified frame");

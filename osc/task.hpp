@@ -47,6 +47,12 @@ template <typename VectorType>
 struct pid_gains {
     pid_gains(const std::size_t &sz) : p(sz), i(sz), d(sz) {}
 
+    void resize(const std::size_t &sz) {
+        p.resize(sz);
+        i.resize(sz);
+        d.resize(sz);
+    }
+
     constexpr VectorType compute(const task_error<VectorType> &error) {
         return p.asDiagonal() * error.error + i.asDiagonal() * error.error_int +
                d.asDiagonal() * error.error_dot;
@@ -143,7 +149,10 @@ class TaskTpl {
         parameters_v.xacc_d = create_variable_vector("xacc_d", dimension);
         parameters_d.xacc_d = eigen_vector_t::Zero(dimension);
 
-        // pid.resize(dimension);
+        pid.resize(dimension);
+        pid.p.setOnes();
+        pid.i.setOnes();
+        pid.d.setZero();
     }
 
     // Parameter variables
@@ -175,8 +184,8 @@ class FrameTask : public Task {
               const std::string &reference_frame = "universe");
 
     struct task_state {
-        se3_t pose;
-        twist_t twist;
+        se3_t pose = se3_t::Identity();
+        twist_t twist = twist_t::Zero();
     };
 
     typedef task_state task_state_t;

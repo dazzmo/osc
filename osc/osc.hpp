@@ -107,7 +107,7 @@ class OSC {
 
     template <class CostType>
     void add_cost_to_program(const CostType &cost) {
-        cost.add_to_program(model_sym, *this);
+        cost->add_to_program(model_sym, *this);
     }
 
     void add_contact_point_3d(const std::string &name,
