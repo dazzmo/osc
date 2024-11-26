@@ -34,6 +34,10 @@ void Dynamics::register_actuation(const eigen_matrix_sym_t &B,
     variables_.u = u;
 }
 
+    void Dynamics::add_additional_dynamics(AdditionalDynamics &dynamics) {
+        dynamics.add_to_dynamics(*this);
+    }
+
 void Dynamics::add_constraint_forces(const eigen_vector_sym_t &lambda) {
     variables_.lambda.conservativeResize(variables_.lambda.size() +
                                          lambda.size());

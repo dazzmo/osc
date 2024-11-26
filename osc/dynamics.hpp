@@ -1,7 +1,7 @@
 #pragma once
 #include "osc/common.hpp"
-#include "osc/contact.hpp"
 #include "osc/constraint.hpp"
+#include "osc/contact.hpp"
 
 namespace osc {
 
@@ -20,8 +20,9 @@ struct dynamics_parameters {
     VectorType v;
 };
 
-// Forward declaration
+// Forward declarations
 class OSC;
+class AdditionalDynamics;
 
 class Dynamics {
     friend class OSC;
@@ -36,17 +37,30 @@ class Dynamics {
 
     void add_constraint(const HolonomicConstraint &constraint);
 
+    void add_additional_dynamics(AdditionalDynamics &dynamics);
+
     void add_to_program(const model_sym_t &model, OSC &osc_program);
 
    private:
     model_sym_t model;
 
+    // Variables related to the dynamics of the system
     dynamics_variables<eigen_vector_sym_t> variables_;
     dynamics_parameters<eigen_vector_sym_t> parameters_;
 
+    // Symbolic representation of the system dynamics
     eigen_vector_sym_t dynamics_;
 
     void add_constraint_forces(const eigen_vector_sym_t &lambda);
+};
+
+class AdditionalDynamics {
+    friend class Dynamics;
+
+   public:
+    virtual void add_to_dynamics(Dynamics &dynamics) = 0;
+
+   private:
 };
 
 }  // namespace osc

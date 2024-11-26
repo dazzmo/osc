@@ -204,7 +204,7 @@ void JointTrackingTask::add_to_program(const model_sym_t &model,
     eigen_vector_sym_t w = create_symbolic_vector("w", dimension());
     eigen_vector_sym_t xacc_d = create_symbolic_vector("xacc_d", dimension());
 
-    // Determine error in frame acceleration (in LOCAL frame)
+    // Determine error as measure of joint accelerations
     eigen_vector_sym_t e = a - xacc_d;
 
     sym_t a_s = eigen_to_casadi<sym_elem_t>::convert(a);
