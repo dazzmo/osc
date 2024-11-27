@@ -1,8 +1,8 @@
 #pragma once
 
 #include "osc/constraint.hpp"
-#include "osc/task.hpp"
 #include "osc/program.hpp"
+#include "osc/task.hpp"
 
 namespace osc {
 
@@ -67,7 +67,8 @@ class ContactPoint : public HolonomicConstraint {
 
  protected:
   contact_point_parameters<vector_t, value_type> parameters_d;
-  contact_point_parameters<std::vector<bopt::variable>, bopt::variable> parameters_v;
+  contact_point_parameters<std::vector<bopt::variable>, bopt::variable>
+      parameters_v;
 };
 
 class ContactPoint3D : public ContactPoint {
@@ -75,7 +76,8 @@ class ContactPoint3D : public ContactPoint {
   ContactPoint3D(const model_t &model, const string_t &frame)
       : ContactPoint(3, model.nq, model.nv, frame) {}
 
-  static std::shared_ptr<ContactPoint3D> create(const model_t &model, const string_t &frame) {
+  static std::shared_ptr<ContactPoint3D> create(const model_t &model,
+                                                const string_t &frame) {
     return std::make_shared<ContactPoint3D>(model, frame);
   }
 

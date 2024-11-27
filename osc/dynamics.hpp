@@ -10,6 +10,14 @@ namespace osc {
 class OSC;
 class AdditionalDynamics;
 
+class AbstractDynamics {
+ private:
+  // Keep vector of contacts and constraints
+  // void evaluate(model_t &model, data_t &data);
+  // void evaluate(model_t &model, data_t &data);
+
+};
+
 class SystemDynamics : public OSCComponent {
   friend class OSC;
   friend class AdditionalDynamics;

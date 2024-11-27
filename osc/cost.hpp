@@ -34,6 +34,7 @@ struct cost_parameters {
   VectorType w;
 };
 
+
 /**
  * @brief
  *

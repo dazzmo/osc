@@ -1,12 +1,12 @@
 /**
- * @file osc.hpp
+ * @file hosc.hpp
  * @author your name (you@domain.com)
- * @brief Weighted Operational Space Control
+ * @brief Heirarchical Operational Space Control 
  * @version 0.1
  * @date 2024-11-27
- *
+ * 
  * @copyright Copyright (c) 2024
- *
+ * 
  */
 #pragma once
 
@@ -21,11 +21,11 @@
 
 namespace osc {
 
-class OSC {
+class HOSC {
   friend class OSCComponent;
 
  public:
-  OSC(model_t &model, const index_t &nu)
+  HOSC(model_t &model, const index_t &nu)
       : model(model), model_sym(model.cast<sym_t>()), program_() {
     // Create system dynamics
     variables_.a = bopt::create_variable_vector("a", model.nv);
@@ -44,98 +44,79 @@ class OSC {
    * J \dot q - \ddot x_d ||_W^2
    *
    */
-  class TaskCost : public bopt::quadratic_cost<double> {
+  class PriorityCost : public bopt::quadratic_cost<double> {
    public:
     // Evaluate it numerically?
-    enum class Method { Numeric, Symbolic, Codegen };
-
-    TaskCost(const std::shared_ptr<AbstractTask> &task) {
-      // If codegen
-      // casadi::SX J = task->evaluate(model, data, J, dJdq);
-      // casadi::SX cost = mtimes(J.)
-
-      // Create expression or evaluate numerically
-    }
 
     integer_type A(const double **arg, double *res) override {
       // Take arguements
-      // Eigen::Map<const vector_t> w(arg[0]);
-      // Eigen::Map<vector_t> xacc(arg[1]);
+      Eigen::Map<vector_t> w(arg[0]);
+      Eigen::Map<vector_t> xacc(arg[1]);
 
-      // if (type == Numeric) {
-      //   Eigen::Map<matrix_t> A(res[0]);
-      //   A = J_.transpose() * w.asDiagonal() * J_;
-      // }
+      Eigen::Map<matrix_t> A(res[0]);
 
-      // if (type == Symbolic) {
-      // }
+      // Iteratively compute for all tasks
+        // for(int i = 0; i < max_priority; ++i) {
 
-      // if (type == Codegen) {
-      // }
+        // }
+      A = J_.transpose() * J_;
+
+      if(codegen) {
+        // Perform codegen
+      }
 
       return 0;
     }
 
     integer_type A_info(out_info_t &info) {
-      // info.m = 10;
-      // info.n = 10;
-      // info.sparsity = bopt::matrix_type::Dense;
+      info.m = 10;
+      info.n = 10;
+      info.sparsity = bopt::Dense;
       return 0;
     }
 
     integer_type b(const double **arg, double *res) override {
       // Take arguements
-      // Eigen::Map<vector_t> w(arg[0]);
-      // Eigen::Map<vector_t> xacc(arg[1]);
-      // Eigen::Map<matrix_t> b(res[0]);
+      Eigen::Map<vector_t> w(arg[0]);
+      Eigen::Map<vector_t> xacc(arg[1]);
+      Eigen::Map<matrix_t> b(res[0]);
 
-      // b = dJdq_ - xaccd;
+      b = dJdq_ - xaccd;
 
-      // if (codegen) {
-      //   // Evaluate as normal
-      //   // b_cg(arg, res);
-      // }
+      if (codegen) {
+        // Evaluate as normal
+        // b_cg(arg, res);
+      }
 
       return 0;
     }
 
     integer_type b_info(out_info_t &info) {
-      // info.m = 10;
-      // info.n = 10;
-      // info.sparsity = bopt::Dense;
+      info.m = 10;
+      info.n = 10;
+      info.sparsity = bopt::Dense;
 
-      // if (codegen) {
-      //   // Evaluate as normal
-      //   // b_cg(arg, res);
-      // }
+      if (codegen) {
+        // Evaluate as normal
+        // b_cg(arg, res);
+      }
 
       return 0;
     }
 
     /**
-     * @brief Update kinodynamic parameters and any parameters for the constraint
+     * @brief Update kinodynamic parameters
      *
      * @param model
      * @param data
      */
-    void update(model_t &model, data_t &data, bopt::mathematical_program<double> &program) {
-      // if(type == Numeric) task_->evaluate(model, data, J_, dJdq_);
-
-      // // Update parameters
-      // program.set_parameter(task_->parameters.w);
-      // program.set_parameter(task_->parameters.xaccd);
+    void update(model_t &model, data_t &data) {
+      task_->evaluate(model, data, J_, dJdq_);
     }
 
    private:
-    // Numeric evaluation quantities
     matrix_t J_;
     matrix_t dJdq_;
-
-    // Symbolic evaluation quantities
-
-    // Codegen evaluation quantities
-    // bopt::expression_evaluator<double> A_eval_;
-    // bopt::expression_evaluator<double> b_eval_;
 
     std::shared_ptr<AbstractTask> task_;
   };
@@ -143,20 +124,9 @@ class OSC {
   void add_task(const std::string &name,
                 const std::shared_ptr<FrameTaskNew> &task) {
     // Here we create the cost for it?
-
-    // Create a new task and bind the necessary variables
-    // std::vector<TaskCost> costs = {TaskCost(task)};
+    std::vector<TaskCost> costs = {TaskCost(task)};
     // costs[0].update(model, data);
   }
-
-  void getTaskID(const std::string &name) {
-
-  }
-
-  // Have collection of weights and stuff?
-
-  // Error to compute for the task acceleration errors (xaccd = Kp e + Kd e_dot)
-  // std::vector<pid_gains<double>> pid_gains;
 
   void init() {
     // All tasks added, finalise dynamics constraint
@@ -222,18 +192,20 @@ class OSC {
    * @brief Generic cost 0.5 x^T H x + b^T x
    *
    */
-  // class Cost : public bopt::quadratic_cost<double> {
-  //  public:
-  //   // Evaluate it numerically?
-  //   void A() { task_->evaluate(); }
+  class Cost : public bopt::quadratic_cost<double> {
+   public:
+    // Evaluate it numerically?
+    void A() { task_->evaluate(); }
 
-  //   // task_->evaluate(H, g)
+    // task_->evaluate(H, g)
 
-  //  private:
-  //   void update(model_t &model, data_t &data) {}
+   private:
+    void update(model_t &model, data_t &data) {
 
-  //   std::shared_ptr<AbstractCost> task_;
-  // };
+    }
+
+    std::shared_ptr<AbstractCost> task_;
+  };
 
   template <class CostType>
   void add_cost(const std::shared_ptr<CostType> &cost) {
@@ -241,11 +213,10 @@ class OSC {
   }
 
   class NoSlipConstraint : public bopt::linear_constraint<double> {};
-  
-  class NoSlipCost : public bopt::quadratic_cost<double> {};
 
   class FrictionConeConstraint : public bopt::linear_constraint<double> {};
 
+  class NoSlipCost : public bopt::quadratic_cost<double> {};
 
   void add_contact_point(const std::string &name,
                          const std::shared_ptr<ContactPoint3D> &contact,

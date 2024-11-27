@@ -78,6 +78,8 @@ void FrameTask::add_to_program(OSC &osc_program) const {
   program.add_parameters(parameters_v.w);
   program.add_parameters(parameters_v.xacc_d);
 
+  // Can also make our own quadratic cost system
+
   program.add_quadratic_cost(
       bopt::casadi::quadratic_cost<value_type>::create(
           cost, a_s, sym_vector_t({q_s, v_s, w_s, xacc_d_s})),
