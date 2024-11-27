@@ -15,6 +15,7 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 
 #include "osc/common.hpp"
+#include "osc/program.hpp"
 
 namespace osc {
 
@@ -22,50 +23,49 @@ class OSC;
 
 template <class T>
 struct cost_traits {
-    typedef typename T::value_type value_type;
-    typedef typename T::index_type index_type;
-    typedef typename T::integer_type integer_type;
+  typedef typename T::value_type value_type;
+  typedef typename T::index_type index_type;
+  typedef typename T::integer_type integer_type;
 };
 
 template <typename VectorType>
 struct cost_parameters {
-    // Cost weighting
-    VectorType w;
+  // Cost weighting
+  VectorType w;
 };
 
 /**
  * @brief
  *
  */
-class Cost {
-    friend class OSC;
+class Cost : public OSCComponent {
+  friend class OSC;
 
-   public:
-    // Typedefs
-    typedef double value_type;
-    typedef std::size_t index_type;
-    typedef int integer_type;
+ public:
+  // Typedefs
+  typedef double value_type;
+  typedef std::size_t index_type;
+  typedef int integer_type;
 
-    Cost() {
-        // Create parameters
-    }
+  Cost() {
+    // Create parameters
+  }
 
-   protected:
-    virtual void add_to_program(const model_sym_t &model,
-                                OSC &osc_program) = 0;
+ protected:
+  virtual void add_to_program(OSC &osc_program) const = 0;
 
-   private:
+ private:
 };
 
 class EffortSquaredCost : public Cost {
-   public:
-    friend class OSC;
+ public:
+  friend class OSC;
 
-    EffortSquaredCost() {}
+  EffortSquaredCost() {}
 
-    void add_to_program(const model_sym_t &model, OSC &osc_program) override;
+  void add_to_program(OSC &osc_program) const override;
 
-   private:
+ private:
 };
 
 }  // namespace osc

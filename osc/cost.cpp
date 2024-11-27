@@ -4,22 +4,28 @@
 
 namespace osc {
 
-void EffortSquaredCost::add_to_program(const model_sym_t &model,
-                                       OSC &osc_program) {
-    eigen_vector_sym_t u =
-        create_symbolic_vector("u", osc_program.variables.u.size());
-    // Create expression evaluators
-    sym_t u_s = eigen_to_casadi<sym_elem_t>::convert(u);
-    sym_t cost = sym_t::dot(u_s, u_s);
+void EffortSquaredCost::add_to_program(OSC &osc_program) const {
+  const model_sym_t &model = OSCComponent::get_model(osc_program);
+  bopt::mathematical_program<double> &program =
+      OSCComponent::get_program(osc_program);
+  const osc_variables &variables =
+      OSCComponent::get_variables(osc_program);
+  osc_parameters &parameters =
+      OSCComponent::get_parameters(osc_program);
 
-    // Add to program
-    osc_program.program.add_quadratic_cost(
-        bopt::casadi::quadratic_cost<value_type>::create(cost, u_s,
-                                                         sym_vector_t({})),
-        // Variables
-        {eigen_to_std_vector<bopt::variable>::convert(osc_program.variables.u)},
-        // Parameters
-        {});
+  vector_sym_t u = create_symbolic_vector("u", variables.u.size());
+  // Create expression evaluators
+  sym_t u_s = casadi::eigen_to_casadi(u);
+  sym_t cost = sym_t::dot(u_s, u_s);
+
+  // Add to program
+  program.add_quadratic_cost(
+      bopt::casadi::quadratic_cost<value_type>::create(cost, u_s,
+                                                       sym_vector_t({})),
+      // Variables
+      {variables.u},
+      // Parameters
+      {});
 }
 
 }  // namespace osc

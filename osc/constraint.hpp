@@ -6,6 +6,7 @@
 #include <bopt/variable.hpp>
 
 #include "osc/common.hpp"
+#include "osc/program.hpp"
 
 namespace osc {
 
@@ -15,24 +16,25 @@ class OSC;
  * @brief Holonomic constraint related to a model
  *
  */
-class HolonomicConstraint {
-    friend class OSC;
-   public:
-    typedef double value_type;
-    typedef std::size_t index_type;
+class HolonomicConstraint : public OSCComponent {
+  friend class OSC;
 
-    HolonomicConstraint(const index_type &dim) : dimension_(dim) {}
+ public:
+  typedef double value_type;
+  typedef index_t index_type;
 
-    const index_type &dimension() const { return dimension_; }
+  HolonomicConstraint(const index_type &dim) : dimension_(dim) {}
 
-    virtual eigen_matrix_sym_t constraint_jacobian(
-        const model_sym_t &model, const eigen_vector_sym_t &q) const = 0;
+  const index_type &dimension() const { return dimension_; }
 
-   protected:
-    virtual void add_to_program(const model_sym_t &model, OSC &osc) = 0;
+  virtual matrix_sym_t constraint_jacobian(const model_sym_t &model,
+                                           const vector_sym_t &q) const = 0;
 
-   private:
-    index_type dimension_;
+ protected:
+  virtual void add_to_program(OSC &osc) const = 0;
+
+ private:
+  index_type dimension_;
 };
 
 }  // namespace osc

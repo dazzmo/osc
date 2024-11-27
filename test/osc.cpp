@@ -32,7 +32,7 @@ TEST(OSC, AddFrameTask) {
 
     // Test if variables can be set
     pelvis->parameters().w << 1.0, 2.0, 3.0;
-    osc::eigen_vector_t q(model.nq), v(model.nv);
+    osc::vector_t q(model.nq), v(model.nv);
     q.setZero();
     v.setZero();
     q[6] = 1.0;
@@ -74,7 +74,7 @@ TEST(OSC, AddContact3D) {
 
     program.add_dynamics(dynamics);
 
-    osc::eigen_vector_t q(model.nq), v(model.nv);
+    osc::vector_t q(model.nq), v(model.nv);
     q.setZero();
     v.setZero();
     q[6] = 1.0;
@@ -126,7 +126,7 @@ TEST(OSC, FullProgram) {
     auto u2 = std::make_shared<osc::EffortSquaredCost>();
     program.add_cost_to_program(u2);
 
-    osc::eigen_vector_t q(model.nq), v(model.nv);
+    osc::vector_t q(model.nq), v(model.nv);
     q.setZero();
     v.setZero();
     q[6] = 1.0;

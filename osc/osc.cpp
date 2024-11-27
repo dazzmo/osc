@@ -6,14 +6,14 @@
 
 namespace osc {
 
-void OSC::loop(const eigen_vector_t &q, const eigen_vector_t &v) {
+void OSC::loop(const vector_t &q, const vector_t &v) {
     assert(is_initialised_ && "OSC is not initialised!");
     // Update references for all tasks
     for (std::size_t i = 0; i < q.size(); ++i) {
-        program.set_parameter(parameters.q[i], q[i]);
+        program_.set_parameter(parameters_.q[i], q[i]);
     }
     for (std::size_t i = 0; i < v.size(); ++i) {
-        program.set_parameter(parameters.v[i], v[i]);
+        program_.set_parameter(parameters_.v[i], v[i]);
     }
 
     data_t data(model);

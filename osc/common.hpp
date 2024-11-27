@@ -10,6 +10,7 @@
 namespace osc {
 
 typedef std::string string_t;
+typedef std::size_t index_t;
 
 typedef ::casadi::SXElem sym_elem_t;
 typedef ::casadi::SX sym_t;
@@ -22,52 +23,48 @@ typedef pinocchio::Model model_t;
 typedef pinocchio::Data data_t;
 
 template <typename T, int Size = Eigen::Dynamic>
-using eigen_vector_tpl_t = Eigen::Vector<T, Size>;
+using vector_tpl_t = Eigen::Vector<T, Size>;
 
 template <typename T, int Rows = Eigen::Dynamic, int Cols = Eigen::Dynamic>
-using eigen_matrix_tpl_t = Eigen::Matrix<T, Rows, Cols>;
+using matrix_tpl_t = Eigen::Matrix<T, Rows, Cols>;
 
-typedef eigen_vector_tpl_t<bopt::variable> eigen_vector_var_t;
-typedef eigen_vector_tpl_t<sym_t> eigen_vector_sym_t;
-typedef eigen_vector_tpl_t<double> eigen_vector_t;
-typedef eigen_vector_tpl_t<double, 3> eigen_vector3_t;
+typedef vector_tpl_t<bopt::variable> vector_var_t;
+typedef vector_tpl_t<sym_t> vector_sym_t;
+typedef vector_tpl_t<double> vector_t;
+typedef vector_tpl_t<double, 3> vector3_t;
 
-typedef eigen_matrix_tpl_t<sym_t> eigen_matrix_sym_t;
-typedef eigen_matrix_tpl_t<double> eigen_matrix_t;
-typedef eigen_matrix_tpl_t<double, 3, 3> eigen_matrix3_t;
+typedef matrix_tpl_t<sym_t> matrix_sym_t;
+typedef matrix_tpl_t<double> matrix_t;
+typedef matrix_tpl_t<double, 3, 3> matrix3_t;
 
-typedef std::shared_ptr<model_sym_t> model_sym_shared_ptr_t;
+vector_sym_t create_symbolic_vector(const string_t &name, const index_t &sz);
 
-eigen_vector_sym_t create_symbolic_vector(const std::string &name,
-                                          const std::size_t &sz);
-
-eigen_vector_var_t create_variable_vector(const std::string &name,
-                                          const std::size_t &sz);
-
-                                          template <typename Scalar>
-struct eigen_to_casadi {
-    typedef std::size_t index_type;
-    typedef casadi::Matrix<Scalar> casadi_vector_t;
-    typedef Eigen::VectorX<casadi::Matrix<Scalar>> eigen_vector_t;
-
-    static inline casadi_vector_t convert(const eigen_vector_t &v) {
-        casadi_vector_t c(v.rows(), 1);
-        for (index_type i = 0; i < v.size(); ++i) {
-            // Only fill in non-zero entries
-            if (!::casadi::is_zero(v[i]->at(0))) {
-                c(i) = v[i]->at(0);
-            }
-        }
-        return c;
-    }
+/**
+ * @brief Variables associated with an Operational Space controller
+ *
+ * @tparam Scalar
+ */
+struct osc_variables {
+  std::vector<bopt::variable> a;
+  std::vector<bopt::variable> u;
+  std::vector<bopt::variable> lambda;
 };
 
-template <typename Scalar>
-struct eigen_to_std_vector {
-    static inline std::vector<Scalar> convert(
-        const eigen_vector_tpl_t<Scalar> &v) {
-        return std::vector<Scalar>(v.data(), v.data() + v.rows() * v.cols());
-    }
+/**
+ * @brief Generic parameters associated with an operational space controller
+ *
+ * @tparam Scalar
+ */
+struct osc_parameters {
+  std::vector<bopt::variable> q;
+  std::vector<bopt::variable> v;
 };
+
+namespace casadi {
+
+::casadi::SX eigen_to_casadi(const Eigen::MatrixX<::casadi::SX> &v);
+Eigen::MatrixX<::casadi::SX> casadi_to_eigen(const ::casadi::SX &c);
+
+}  // namespace casadi
 
 }  // namespace osc

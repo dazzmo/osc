@@ -2,65 +2,79 @@
 #include "osc/common.hpp"
 #include "osc/constraint.hpp"
 #include "osc/contact.hpp"
+#include "osc/program.hpp"
 
 namespace osc {
-
-class OSC;
-
-template <typename VectorType>
-struct dynamics_variables {
-    VectorType a;
-    VectorType u;
-    VectorType lambda;
-};
-
-template <typename VectorType>
-struct dynamics_parameters {
-    VectorType q;
-    VectorType v;
-};
 
 // Forward declarations
 class OSC;
 class AdditionalDynamics;
 
-class Dynamics {
-    friend class OSC;
+class SystemDynamics : public OSCComponent {
+  friend class OSC;
+  friend class AdditionalDynamics;
 
-   public:
-    typedef double value_type;
+ public:
+  typedef double value_type;
 
-    Dynamics(const model_t &model);
+  SystemDynamics(const model_t &model, const index_t &nu);
 
-    void register_actuation(const eigen_matrix_sym_t &B,
-                            const eigen_vector_var_t &u_v);
+  /**
+   * @brief Number of constraint forces acting on the system
+   *
+   * @return index_t
+   */
+  index_t nf() const { return f.size(); }
 
-    void add_constraint(const HolonomicConstraint &constraint);
+  void add_constraint(const HolonomicConstraint &constraint);
 
-    void add_additional_dynamics(AdditionalDynamics &dynamics);
+  void add_additional_dynamics(AdditionalDynamics &dynamics);
 
-    void add_to_program(const model_sym_t &model, OSC &osc_program);
+  void add_to_program(OSC &osc_program) const;
 
-   private:
-    model_sym_t model;
+ private:
+  vector_sym_t q;
+  vector_sym_t v;
+  vector_sym_t a;
+  vector_sym_t u;
+  vector_sym_t f;
 
-    // Variables related to the dynamics of the system
-    dynamics_variables<eigen_vector_sym_t> variables_;
-    dynamics_parameters<eigen_vector_sym_t> parameters_;
+  model_sym_t model;
 
-    // Symbolic representation of the system dynamics
-    eigen_vector_sym_t dynamics_;
-
-    void add_constraint_forces(const eigen_vector_sym_t &lambda);
+  // Symbolic representation of the system dynamics
+  vector_sym_t dynamics_;
 };
 
 class AdditionalDynamics {
-    friend class Dynamics;
+  friend class SystemDynamics;
 
-   public:
-    virtual void add_to_dynamics(Dynamics &dynamics) = 0;
+ protected:
+  const vector_sym_t &get_q(SystemDynamics &dynamics) const {
+    return dynamics.q;
+  }
+  const vector_sym_t &get_v(SystemDynamics &dynamics) const {
+    return dynamics.v;
+  }
+  const vector_sym_t &get_a(SystemDynamics &dynamics) const {
+    return dynamics.a;
+  }
+  const vector_sym_t &get_u(SystemDynamics &dynamics) const {
+    return dynamics.u;
+  }
+  const vector_sym_t &get_f(SystemDynamics &dynamics) const {
+    return dynamics.f;
+  }
+  vector_sym_t &get_dynamics(SystemDynamics &dynamics) const {
+    return dynamics.dynamics_;
+  }
+  model_sym_t &get_model(SystemDynamics &dynamics) const {
+    return dynamics.model;
+  }
 
-   private:
+ public:
+  virtual void add_to_dynamics(SystemDynamics &dynamics) const = 0;
+
+ private:
 };
 
 }  // namespace osc
