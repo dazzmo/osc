@@ -1,8 +1,8 @@
 #pragma once
 #include "osc/common.hpp"
-#include "osc/constraint.hpp"
 #include "osc/contact.hpp"
 #include "osc/program.hpp"
+#include "osc/holonomic.hpp"
 
 namespace osc {
 
@@ -17,6 +17,20 @@ class AbstractDynamics {
   // void evaluate(model_t &model, data_t &data);
 
 };
+
+class AbstractSystemDynamics {
+
+public:
+
+  void add_constraint(const std::shared_ptr<HolonomicConstraint> &constraint) {
+    constraints_.push_back(constraint);
+  }
+
+private:
+  std::vector<std::shared_ptr<HolonomicConstraint>> constraints_;
+
+};
+
 
 class SystemDynamics : public OSCComponent {
   friend class OSC;

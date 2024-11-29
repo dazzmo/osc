@@ -8,6 +8,7 @@ enable_testing()
 
 # Create list of files
 SET(TEST_FILES
+contact.cpp
 osc.cpp
 task.cpp
 )

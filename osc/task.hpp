@@ -15,6 +15,7 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 
 #include "osc/common.hpp"
+#include "osc/holonomic.hpp"
 #include "osc/pid.hpp"
 #include "osc/program.hpp"
 
@@ -36,39 +37,18 @@ struct task_parameters {
   // todo - Additional parameters that can be added
 };
 
-class AbstractCost {};
-
 /**
  * @brief A task of the form Ax + b = J \ddot q + \dot J \dot q and error
  * measure.
  *
  */
-class AbstractTask {
+class AbstractTask : public HolonomicExpression {
  public:
-  index_t priority;
-  index_t dimension;
-
   /**
-   * @brief Numerical evaluation of a task acceleration of the form J \ddot q +
-   * \dot J \dot q
+   * @brief Priority of the task, with lower values indicating higher priority.
    *
-   * @param model
-   * @param data
-   * @param J The Jacobian of the task (i.e. \grad J \grad q)
-   * @param bias The product \dot J \dot q, referred to as the acceleration bias
-   * of the task.
-   *
-   * @note The method assumes that model and data are evaluated to a given
-   * state, it does not perform any forward kinematics or dynamics.
    */
-  virtual void evaluate(const model_t &model, data_t &data, matrix_t &J,
-                        vector_t &bias) = 0;
-
-  // Symbolic evaluation
-  virtual void symbolic_evaluate(const model_sym_t &model, data_sym_t &data,
-                                 matrix_sym_t &J, vector_sym_t &bias) {
-    throw std::runtime_error("symbolic_evaluate not implemented");
-  };
+  index_t priority;
 
   virtual void evaluate_error(const model_t &model, data_t &data, vector_t &e,
                               vector_t &e_dot) = 0;
@@ -91,8 +71,8 @@ class FrameTaskNew : public AbstractTask {
                const Type &type = Type::Full,
                const std::string &reference_frame = "universe")
       : AbstractTask(),
-        frame_name(frame_name),
         type(type),
+        frame_name(frame_name),
         reference_frame(reference_frame) {
     // Ensure the model has the provided frames
     if (model.getFrameId(frame_name) == model.frames.size()) {
@@ -118,19 +98,23 @@ class FrameTaskNew : public AbstractTask {
                                           reference_frame);
   }
 
-  /**
-   * @brief
-   *
-   * \copydoc osc::AbstractTask::evaluate()
-   */
-  void evaluate(const model_t &model, data_t &data, matrix_t &J,
-                vector_t &bias) override {
-    evaluate_tpl<double>(model, data, J, bias);
+  void jacobian(const model_t &model, data_t &data, matrix_t &J) override {
+    jacobian_tpl<double>(model, data, J);
   }
 
-  void symbolic_evaluate(const model_sym_t &model, data_sym_t &data,
-                         matrix_sym_t &J, vector_sym_t &bias) override {
-    evaluate_tpl<::casadi::SX>(model, data, J, bias);
+  void bias_acceleration(const model_t &model, data_t &data,
+                         vector_t &bias) override {
+    bias_acceleration_tpl<double>(model, data, bias);
+  }
+
+  void jacobian(const model_sym_t &model, data_sym_t &data,
+                matrix_sym_t &J) override {
+    jacobian_tpl<sym_t>(model, data, J);
+  }
+
+  void bias_acceleration(const model_sym_t &model, data_sym_t &data,
+                         vector_sym_t &bias) override {
+    bias_acceleration_tpl<sym_t>(model, data, bias);
   }
 
   Type type;
@@ -191,27 +175,35 @@ class FrameTaskNew : public AbstractTask {
 
  private:
   template <typename T>
-  void evaluate_tpl(const pinocchio::ModelTpl<T> &model,
-                    pinocchio::DataTpl<T> &data, Eigen::MatrixX<T> &J,
-                    Eigen::VectorX<T> &dJdq) {
+  void jacobian_tpl(const pinocchio::ModelTpl<T> &model,
+                    pinocchio::DataTpl<T> &data, Eigen::MatrixX<T> &J) {
     typename pinocchio::DataTpl<T>::Matrix6x Jfull =
         pinocchio::DataTpl<T>::Matrix6x::Zero(6, model.nv);
 
     pinocchio::getFrameJacobian(model, data, model.getFrameId(frame_name),
                                 pinocchio::LOCAL, Jfull);
+    if (type == Type::Position) {
+      J = Jfull.topRows(3);
+    } else if (type == Type::Orientation) {
+      J = Jfull.bottomRows(3);
+    } else if (type == Type::Full) {
+      J = Jfull;
+    }
+  }
 
+  template <typename T>
+  void bias_acceleration_tpl(const pinocchio::ModelTpl<T> &model,
+                             pinocchio::DataTpl<T> &data,
+                             Eigen::VectorX<T> &bias) {
     pinocchio::MotionTpl<T> acc = pinocchio::getFrameClassicalAcceleration(
         model, data, model.getFrameId(frame_name));
 
     if (type == Type::Position) {
-      J = Jfull.topRows(3);
-      dJdq = acc.linear();
+      bias = acc.linear();
     } else if (type == Type::Orientation) {
-      J = Jfull.bottomRows(3);
-      dJdq = acc.angular();
+      bias = acc.angular();
     } else if (type == Type::Full) {
-      J = Jfull;
-      dJdq = acc.toVector();
+      bias = acc.toVector();
     }
   }
 };
@@ -469,6 +461,130 @@ class JointTrackingTask : public Task {
 
  protected:
   void add_to_program(OSC &program) const override;
+
+ private:
+};
+
+class AbstractTaskCost : public bopt::quadratic_cost<double> {
+ public:
+  AbstractTaskCost(const model_t &model,
+                   const std::shared_ptr<AbstractTask> &task) {
+    parameters.w = bopt::create_variable_vector("w", task->dimension);
+    parameters.x = bopt::create_variable_vector("x", task->dimension);
+  }
+
+  virtual void update(const model_t &model, data_t &data) {}
+
+  struct parameters {
+    std::vector<bopt::variable> w;
+    std::vector<bopt::variable> x;
+  };
+
+  parameters parameters;
+};
+
+/**
+ * @brief Symbolic generation of a task into a cost, with the ability to perform
+ * code generation.
+ *
+ */
+class SymbolicTaskCost : AbstractTaskCost {
+ public:
+  SymbolicTaskCost(const model_t &model,
+                   const std::shared_ptr<AbstractTask> &task)
+      : AbstractTaskCost(model, task) {
+    // vector_sym_t w, q, v, ad;
+    // matrix_sym_t J;
+    // vector_sym_t bias;
+
+    // // Create parameters
+
+    // // Create model
+    // model_sym_t m = model.cast<sym_t>();
+    // data_sym_t d(m);
+
+    // pinocchio::forwardKinematics(m, d, q, v);
+    // pinocchio::updateFramePlacements(m, d);
+
+    // task->jacobian(m, d, J);
+    // task->bias_acceleration(m, d, bias);
+
+    // // Compute task coefficients
+    // matrix_t A = J.transpose() * w.asDiagonal() * J;
+    // vector_t b = 2.0 * (bias - ad).transpose() * w.asDiagonal() * J;
+
+    // // Compute symbolic expression
+    // A_eval_ = std::make_unique<bopt::casadi::expression_evaluator<double>>(
+    //     casadi::eigen_to_casadi(A),
+    //     ::casadi::SXVector(
+    //         {casadi::eigen_to_casadi(q), casadi::eigen_to_casadi(v),
+    //          casadi::eigen_to_casadi(w), casadi::eigen_to_casadi(ad)}));
+
+    // b_eval_ = std::make_unique<bopt::casadi::expression_evaluator<double>>(
+    //     casadi::eigen_to_casadi(b),
+    //     ::casadi::SXVector(
+    //         {casadi::eigen_to_casadi(q), casadi::eigen_to_casadi(v),
+    //          casadi::eigen_to_casadi(w), casadi::eigen_to_casadi(ad)}));
+  }
+
+  // Dummy override
+  integer_type operator()(const value_type **arg, value_type *ret) override {
+    *ret = 0.0;
+    return 0;
+  }
+
+  integer_type A(const double **arg, double *res) override {
+    return (*A_eval_)(arg, res);
+  }
+
+  integer_type A_info(out_info_t &info) override { return A_eval_->info(info); }
+
+  integer_type b(const double **arg, double *res) override {
+    return (*b_eval_)(arg, res);
+  }
+
+  integer_type b_info(out_info_t &info) override { return b_eval_->info(info); }
+
+ private:
+  // Codegen evaluation quantities
+  std::unique_ptr<bopt::evaluator<double>> A_eval_;
+  std::unique_ptr<bopt::evaluator<double>> b_eval_;
+};
+
+/**
+ * @brief Quadratic cost representation for a holonomic expression
+ *
+ */
+class TaskCost : AbstractTaskCost {
+ public:
+  TaskCost(const model_t &model, const std::shared_ptr<AbstractTask> &task)
+      : AbstractTaskCost(model, task) {
+  }
+
+  std::shared_ptr<AbstractTask> task_;
+
+  // Dummy override
+  integer_type operator()(const value_type **arg, value_type *ret) override {
+    *ret = 0.0;
+    return 0;
+  }
+
+  integer_type A(const double **arg, double *res) override {
+    return (*A_eval_)(arg, res);
+  }
+
+  integer_type A_info(out_info_t &info) override { return A_eval_->info(info); }
+
+  integer_type b(const double **arg, double *res) override {
+    return (*b_eval_)(arg, res);
+  }
+
+  integer_type b_info(out_info_t &info) override { return b_eval_->info(info); }
+
+ protected:
+  // Codegen evaluation quantities
+  std::unique_ptr<bopt::evaluator<double>> A_eval_;
+  std::unique_ptr<bopt::evaluator<double>> b_eval_;
 
  private:
 };

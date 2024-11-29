@@ -1,5 +1,6 @@
 
 #include "osc/task.hpp"
+#include "osc/osc.hpp"
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -75,6 +76,25 @@ TEST(Task, FrameTaskSymbolicEvaluate) {
   osc::matrix_sym_t J = osc::matrix_sym_t::Zero(6, model.nv);
   osc::vector_sym_t bias = osc::vector_sym_t::Zero(6);
   task->symbolic_evaluate(model_sym, data, J, bias);
+}
+
+TEST(Task, AddFrameTaskToProgram) {
+  // Load a model
+  const std::string urdf_filename = "cassie.urdf";
+  pinocchio::Model model;
+  pinocchio::urdf::buildModel(urdf_filename, model);
+
+  osc::model_sym_t model_sym = model.cast<osc::sym_t>();
+  osc::data_sym_t data(model_sym);
+
+  osc::vector_sym_t q = osc::create_symbolic_vector("q", model.nq);
+  pinocchio::framesForwardKinematics(model_sym, data, q);
+
+  auto task = osc::FrameTaskNew::create(model, "LeftFootFront");
+
+  osc::OSC program(model, 10);
+  osc::OSC::TaskCost cost(task);
+
 }
 
 int main(int argc, char** argv) {

@@ -1,136 +1,178 @@
 #pragma once
 
-#include "osc/constraint.hpp"
-#include "osc/program.hpp"
-#include "osc/task.hpp"
+#include <bopt/ad/casadi/casadi.hpp>
+#include <bopt/constraints.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+
+#include "osc/holonomic.hpp"
 
 namespace osc {
 
 class OSC;
 
-struct contact_point_traits {};
-
-template <typename VectorType, typename ScalarType>
-struct contact_point_parameters {
-  // Slack variable for no-slip condition in linear constraint defining
-  // contact
-  VectorType epsilon;
-
-  // Friction coeffcient
-  ScalarType mu;
-  // Normal vector for contact (in contact surface frame)
-  VectorType n;
-  // Tangent vector for contact (in contact surface frame)
-  VectorType t;
-  // Remaining vector for contact (in contact surface frame)
-  VectorType b;
-
-  // Upper bound for frictional force
-  VectorType lambda_ub;
-  // Lower bound for frictional force
-  VectorType lambda_lb;
+class AbstractLinearConstraint {
+ public:
+  virtual std::shared_ptr<bopt::linear_constraint<double>> to_constraint(
+      const model_t &model) const = 0;
 };
 
-class ContactPoint : public HolonomicConstraint {
+class AbstractContactConstraint : public HolonomicConstraint {
  public:
-  friend class OSC;
-
-  typedef double value_type;
-  typedef std::size_t index_type;
-  typedef int integer_type;
-
-  typedef typename Eigen::VectorX<value_type> vector_t;
-
-  ContactPoint(const index_type &dim, const index_type &model_nq,
-               const index_type &model_nv, const string_t &target);
-
-  virtual bopt::linear_constraint<value_type>::shared_ptr
-  create_friction_constraint(const model_sym_t &model) const = 0;
-
-  virtual bopt::bounding_box_constraint<value_type>::shared_ptr
-  create_friction_bound_constraint(const model_sym_t &model) const = 0;
-
-  /**
-   * @brief Provides the contact Jacobian for the system
-   *
-   */
-  matrix_sym_t constraint_jacobian(const model_sym_t &model,
-                                   const vector_sym_t &q) const override;
-
-  bool in_contact = false;
-
+  AbstractContactConstraint(const model_t &model, const string_t &frame,
+                            const index_t &dimension)
+      : HolonomicConstraint(dimension), frame(frame) {
+    // Ensure the frame exists on the model
+    if (model.getFrameId(frame) == model.frames.size()) {
+      assert("Model does not have specified frame");
+    }
+  }
+  // Frame for the contact to occur
   string_t frame;
-
-  contact_point_parameters<vector_t, value_type> &parameters() {
-    return parameters_d;
-  }
-
- protected:
-  contact_point_parameters<vector_t, value_type> parameters_d;
-  contact_point_parameters<std::vector<bopt::variable>, bopt::variable>
-      parameters_v;
-};
-
-class ContactPoint3D : public ContactPoint {
- public:
-  ContactPoint3D(const model_t &model, const string_t &frame)
-      : ContactPoint(3, model.nq, model.nv, frame) {}
-
-  static std::shared_ptr<ContactPoint3D> create(const model_t &model,
-                                                const string_t &frame) {
-    return std::make_shared<ContactPoint3D>(model, frame);
-  }
-
-  /**
-   * @brief Imposes a linearised friction cone constraint for the contact
-   * forces \f$ \lambda \f$
-   *
-   * @param model
-   * @return bopt::linear_constraint<value_type>::shared_ptr
-   */
-  bopt::linear_constraint<value_type>::shared_ptr create_friction_constraint(
-      const model_sym_t &model) const override;
-
-  /**
-   * @brief Creates a simple bounding box constraint for the constraint forces
-   * \f$ \lambda \f$
-   *
-   * @param model
-   * @return bopt::bounding_box_constraint<value_type>::shared_ptr
-   */
-  bopt::bounding_box_constraint<value_type>::shared_ptr
-  create_friction_bound_constraint(const model_sym_t &model) const override;
-
-  /**
-   * @brief The no-slip condition imposed as the linear constraint \f$ J \ddot
-   * q +
-   * \dot J \dot q - \epsilon = 0 \f$
-   *
-   * @param model
-   * @return bopt::linear_constraint<value_type>::shared_ptr
-   */
-  bopt::linear_constraint<value_type>::shared_ptr create_no_slip_constraint(
-      const model_sym_t &model) const;
-
-  matrix_sym_t constraint_jacobian(const model_sym_t &model,
-                                   const vector_sym_t &q) const {
-    return ContactPoint::constraint_jacobian(model, q).topRows(3);
-  }
-
- protected:
-  /**
-   * @brief Registers the contact as a constraint within the provided program.
-   *
-   * @param model
-   * @param osc_program
-   *
-   * @note This assumes that constraint forces lambda have been added to the
-   * program before this is called, such that the forces used will be the last
-   * dimension() variables of lambda in the program.
-   */
-  void add_to_program(OSC &osc_program) const override;
 
  private:
 };
+
+class AbstractFrictionContact : public AbstractContactConstraint {
+ public:
+  AbstractFrictionContact(const model_t &model, const string_t &frame,
+                          const index_t &dimension)
+      : AbstractContactConstraint(model, frame, dimension) {
+    parameters.n = vector3_t::UnitZ();
+    parameters.t = vector3_t::UnitX();
+    parameters.b = vector3_t::UnitY();
+
+    parameters.mu = 1.0;
+
+    parameters.lambda_ub =
+        vector_t::Constant(dimension, std::numeric_limits<double>::infinity());
+    parameters.lambda_lb =
+        vector_t::Constant(dimension, -std::numeric_limits<double>::infinity());
+  }
+
+  struct parameters {
+    // Contact surface normal vector
+    vector3_t n;
+    // Contact surface tangent vector
+    vector3_t t;
+    // Contact surface binormal vector
+    vector3_t b;
+
+    double mu;
+
+    vector_t lambda_ub;
+    vector_t lambda_lb;
+  };
+
+  parameters parameters;
+};
+
+class FrictionContact3D : public AbstractFrictionContact {
+ public:
+  FrictionContact3D(const model_t &model, const string_t &frame)
+      : AbstractFrictionContact(model, frame, 3) {}
+
+  void jacobian(const model_t &model, data_t &data, matrix_t &J) override {
+    jacobian_tpl<double>(model, data, J);
+  }
+
+  void bias_acceleration(const model_t &model, data_t &data,
+                         vector_t &bias) override {
+    bias_acceleration_tpl<double>(model, data, bias);
+  }
+
+  void jacobian(const model_sym_t &model, data_sym_t &data,
+                matrix_sym_t &J) override {
+    jacobian_tpl<sym_t>(model, data, J);
+  }
+
+  void bias_acceleration(const model_sym_t &model, data_sym_t &data,
+                         vector_sym_t &bias) override {
+    bias_acceleration_tpl<sym_t>(model, data, bias);
+  }
+
+ private:
+  template <typename T>
+  void jacobian_tpl(const pinocchio::ModelTpl<T> &model,
+                    pinocchio::DataTpl<T> &data, Eigen::MatrixX<T> &J) {
+    typename pinocchio::DataTpl<T>::Matrix6x Jfull =
+        pinocchio::DataTpl<T>::Matrix6x::Zero(6, model.nv);
+    pinocchio::getFrameJacobian(model, data, model.getFrameId(frame),
+                                pinocchio::WORLD, Jfull);
+    J = Jfull.topRows(3);
+  }
+
+  template <typename T>
+  void bias_acceleration_tpl(const pinocchio::ModelTpl<T> &model,
+                             pinocchio::DataTpl<T> &data,
+                             Eigen::VectorX<T> &bias) {
+    pinocchio::MotionTpl<T> acc = pinocchio::getFrameClassicalAcceleration(
+        model, data, model.getFrameId(frame), pinocchio::WORLD);
+
+    bias = acc.linear();
+  }
+};
+
+class FrictionConeConstraint : public AbstractLinearConstraint {
+ public:
+  FrictionConeConstraint(
+      const std::shared_ptr<AbstractFrictionContact> &contact) {
+    // Create parameters
+    mu = bopt::variable("mu");
+    n = bopt::create_variable_vector("n", 3);
+    t = bopt::create_variable_vector("t", 3);
+    b = bopt::create_variable_vector("b", 3);
+  }
+
+  // Friction coeffcient
+  bopt::variable mu;
+  // Normal vector for contact (in contact surface frame)
+  std::vector<bopt::variable> n;
+  // Tangent vector for contact (in contact surface frame)
+  std::vector<bopt::variable> t;
+  // Remaining vector for contact (in contact surface frame)
+  std::vector<bopt::variable> b;
+
+  // todo - could also make a specialised constraint (without codegen and
+  // produce this)
+
+  // Return linear constraint
+  bopt::linear_constraint<double>::shared_ptr to_constraint(
+      const model_t &model) const override;
+  const std::shared_ptr<AbstractFrictionContact> &contact() const {
+    return contact_;
+  }
+
+ private:
+  std::shared_ptr<AbstractFrictionContact> contact_;
+};
+
+class NoSlipConstraint : public AbstractLinearConstraint {
+ public:
+  NoSlipConstraint(const std::shared_ptr<AbstractContactConstraint> &contact)
+      : contact_(contact) {
+    epsilon = bopt::create_variable_vector("eps", contact->dimension);
+  }
+
+  // Slack variable for no-slip condition in linear constraint defining
+  // contact
+  std::vector<bopt::variable> epsilon;
+
+  // Return linear constraint
+  bopt::linear_constraint<double>::shared_ptr to_constraint(
+      const model_t &model) const override;
+
+ private:
+  std::shared_ptr<AbstractContactConstraint> contact_;
+};
+
+// class NoSlipCost : public AbstractQuadraticCost {
+//   NoSlipCost(const std::shared_ptr<AbstractContactConstraint> &contact) {}
+
+//   // Slack variable for no-slip condition in linear constraint defining
+//   // contact
+//   std::vector<bopt::variable> xacc
+// };
 
 }  // namespace osc

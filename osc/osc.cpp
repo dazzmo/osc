@@ -23,13 +23,15 @@ void OSC::loop(const vector_t &q, const vector_t &v) {
     pinocchio::centerOfMass(model, data, q, v);
     pinocchio::updateFramePlacements(model, data);
 
-    for (auto &task : get_all_tasks()) {
-        update_task(model, data, task);
-    }
+    // // Update task costs
+    // for (auto &task : get_all_tasks()) {
+    //     update_task(model, data, task);
+    // }
 
-    for (auto &contact : get_all_contact_points()) {
-        update_contact_point(model, data, contact);
-    }
+    // // Update contact elements
+    // for (auto &contact : get_all_contact_points()) {
+    //     update_contact_point(model, data, contact);
+    // }
 
     // Once updated, solve the program
     qp_->solve();

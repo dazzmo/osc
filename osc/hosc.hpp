@@ -24,6 +24,14 @@ namespace osc {
 class HOSC {
   friend class OSCComponent;
 
+  /**
+   * @brief Quadratic cost representation for a holonomic expression
+   * 
+   */
+  class PriorityTaskCost : public bopt::quadratic_cost<double> {
+    // todo - take in a collection of tasks
+  };
+
  public:
   HOSC(model_t &model, const index_t &nu)
       : model(model), model_sym(model.cast<sym_t>()), program_() {
