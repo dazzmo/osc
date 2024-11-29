@@ -38,6 +38,16 @@ class OSC {
     program_.add_parameters(parameters_.v);
   }
 
+  /**
+   * @brief Add a generic quadratic cost the program that doesn't fall under any of the categories provided by OSC.
+   *
+   * @param x
+   * @param p
+   */
+  void add_cost(const std::shared_ptr<bopt::quadratic_cost<double>> &cost,
+                std::vector<bopt::variable> &x,
+                std::vector<std::vector<bopt::variable>> &p) {}
+
   void add_contact(const std::shared_ptr<AbstractFrictionContact> &contact) {
     program_.add_variables(contact->lambda);
   }
@@ -77,7 +87,8 @@ class OSC {
 
   //   program_.add_quadratic_cost(
   //       cost, {variables_.a},
-  //       {parameters_.q, parameters_.v, cost->parameters.w, cost->parameters.x});
+  //       {parameters_.q, parameters_.v, cost->parameters.w,
+  //       cost->parameters.x});
   // }
 
   void getTaskID(const std::string &name) {}
@@ -183,7 +194,8 @@ class OSC {
   //   add_constraint(contact, dynamics);
   // }
 
-  // std::shared_ptr<ContactPoint3D> get_contact_point_3d(const string_t &name) {
+  // std::shared_ptr<ContactPoint3D> get_contact_point_3d(const string_t &name)
+  // {
   //   if (contact_3d_index_map_.find(name) != contact_3d_index_map_.end()) {
   //     return contact_3d_[contact_3d_index_map_.at(name)];
   //   }
@@ -270,7 +282,8 @@ class OSC {
   // }
 
   // template <class TaskType>
-  // void update_task(const model_t &model, const data_t &data, TaskType &task) {
+  // void update_task(const model_t &model, const data_t &data, TaskType &task)
+  // {
   //   pid_error<double> e(task->dimension());
   //   task->compute_task_error(model, data, e);
 
@@ -279,7 +292,8 @@ class OSC {
 
   //   // Update parameters
   //   for (std::size_t i = 0; i < task->dimension(); ++i) {
-  //     program_.set_parameter(task->parameters_v.w[i], task->parameters_d.w[i]);
+  //     program_.set_parameter(task->parameters_v.w[i],
+  //     task->parameters_d.w[i]);
   //     program_.set_parameter(task->parameters_v.xacc_d[i],
   //                            task->parameters_d.xacc_d[i]);
   //   }
