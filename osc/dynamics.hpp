@@ -4,25 +4,13 @@
 #include "osc/common.hpp"
 #include "osc/contact.hpp"
 #include "osc/holonomic.hpp"
-#include "osc/program.hpp"
 
 namespace osc {
 
-// Forward declarations
-class OSC;
-class AdditionalDynamics;
-
-class AbstractDynamics {
- private:
-  // Keep vector of contacts and constraints
-  // void evaluate(model_t &model, data_t &data);
-  // void evaluate(model_t &model, data_t &data);
-
-};
-
 class AbstractSystemDynamics {
  public:
-  AbstractSystemDynamics(const model_t &model) : constraints_({}) {}
+  AbstractSystemDynamics(const model_t &model, const index_t &nu)
+      : nu_(nu), constraints_({}) {}
 
   void add_constraint(const std::shared_ptr<HolonomicConstraint> &constraint) {
     constraints_.push_back(constraint);
@@ -32,9 +20,22 @@ class AbstractSystemDynamics {
     dynamics_.push_back(dynamics);
   }
 
+  /**
+   * @brief Method to evaluate the system dynamics \dot x = f(x u), expressed in
+   * the form \dot x - f(x, u) = 0. Typically this is used to compute the unconstrained dynamics of the system.
+   *
+   * @param model
+   * @param data
+   * @param q Generalised position
+   * @param v Generalised velocity
+   * @param a Generalised acceleration
+   * @param u Control input vector
+   * @return vector_sym_t
+   */
   virtual vector_sym_t evaluate(const model_sym_t &model, data_sym_t &data,
-                        const vector_sym_t &q, const vector_sym_t &v,
-                        const vector_sym_t &a) const {
+                                const vector_sym_t &q, const vector_sym_t &v,
+                                const vector_sym_t &a,
+                                const vector_sym_t &u) const {
     throw std::runtime_error("No symbolic evaluate implemented for dynamics");
   }
 
@@ -45,6 +46,7 @@ class AbstractSystemDynamics {
     vector_sym_t q = create_symbolic_vector("q", model.nq);
     vector_sym_t v = create_symbolic_vector("v", model.nv);
     vector_sym_t a = create_symbolic_vector("a", model.nv);
+    vector_sym_t u = create_symbolic_vector("u", nu_);
 
     // Compute frame state
     model_sym_t model_sym = model.cast<sym_t>();
@@ -54,14 +56,16 @@ class AbstractSystemDynamics {
     pinocchio::forwardKinematics(model_sym, data_sym, q, v, a);
     pinocchio::updateFramePlacements(model_sym, data_sym);
 
+    // Create unconstrained dynamics
     vector_sym_t f;
-    f = pinocchio::rnea(model_sym, data_sym, q, v, a);
+    f = this->evaluate(model_sym, data_sym, q, v, a, u);
 
     // Add additional dynamics
     for (const auto &dyn : dynamics_) {
-      f += dyn->evaluate(model_sym, data_sym, q, v, a);
+      f += dyn->evaluate(model_sym, data_sym, q, v, a, u);
     }
 
+    // Add constraint forces
     vector_sym_t l;
     for (const auto &constraint : constraints_) {
       vector_sym_t lambda_i =
@@ -75,8 +79,8 @@ class AbstractSystemDynamics {
     }
 
     // Create vector for linearisation
-    vector_sym_t x(model.nv + l.size());
-    x << a, l;
+    vector_sym_t x(model.nv + nu_ + l.size());
+    x << a, u, l;
 
     return bopt::casadi::linear_constraint<double>::create(
         casadi::eigen_to_casadi(f), casadi::eigen_to_casadi(x),
@@ -85,75 +89,9 @@ class AbstractSystemDynamics {
   }
 
  private:
+  index_t nu_;
   std::vector<std::shared_ptr<HolonomicConstraint>> constraints_;
   std::vector<std::shared_ptr<AbstractSystemDynamics>> dynamics_;
-};
-
-class SystemDynamics : public OSCComponent {
-  friend class OSC;
-  friend class AdditionalDynamics;
-
- public:
-  typedef double value_type;
-
-  SystemDynamics(const model_t &model, const index_t &nu);
-
-  /**
-   * @brief Number of constraint forces acting on the system
-   *
-   * @return index_t
-   */
-  index_t nf() const { return f.size(); }
-
-  void add_constraint(const HolonomicConstraint &constraint);
-
-  void add_additional_dynamics(AdditionalDynamics &dynamics);
-
-  void add_to_program(OSC &osc_program) const;
-
- private:
-  vector_sym_t q;
-  vector_sym_t v;
-  vector_sym_t a;
-  vector_sym_t u;
-  vector_sym_t f;
-
-  model_sym_t model;
-
-  // Symbolic representation of the system dynamics
-  vector_sym_t dynamics_;
-};
-
-class AdditionalDynamics {
-  friend class SystemDynamics;
-
- protected:
-  const vector_sym_t &get_q(SystemDynamics &dynamics) const {
-    return dynamics.q;
-  }
-  const vector_sym_t &get_v(SystemDynamics &dynamics) const {
-    return dynamics.v;
-  }
-  const vector_sym_t &get_a(SystemDynamics &dynamics) const {
-    return dynamics.a;
-  }
-  const vector_sym_t &get_u(SystemDynamics &dynamics) const {
-    return dynamics.u;
-  }
-  const vector_sym_t &get_f(SystemDynamics &dynamics) const {
-    return dynamics.f;
-  }
-  vector_sym_t &get_dynamics(SystemDynamics &dynamics) const {
-    return dynamics.dynamics_;
-  }
-  model_sym_t &get_model(SystemDynamics &dynamics) const {
-    return dynamics.model;
-  }
-
- public:
-  virtual void add_to_dynamics(SystemDynamics &dynamics) const = 0;
-
- private:
 };
 
 }  // namespace osc

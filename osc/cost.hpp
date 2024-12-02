@@ -15,58 +15,47 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 
 #include "osc/common.hpp"
-#include "osc/program.hpp"
 
 namespace osc {
 
 class OSC;
 
-template <class T>
-struct cost_traits {
-  typedef typename T::value_type value_type;
-  typedef typename T::index_type index_type;
-  typedef typename T::integer_type integer_type;
-};
+/**
+ * @brief Abstract quadratic cost with interface method to generate a quadratic
+ * cost expression.
+ *
+ */
+class AbstractQuadraticCost {
+ public:
+  virtual bopt::quadratic_cost<double>::shared_ptr to_cost() = 0;
 
-template <typename VectorType>
-struct cost_parameters {
-  // Cost weighting
-  VectorType w;
+ private:
 };
 
 
 /**
- * @brief
- *
+ * @brief Weighted quadratic cost of the form \f$ ||x||_w^2 \f$
+ * 
  */
-class Cost : public OSCComponent {
-  friend class OSC;
-
+class WeightedSumOfSquaresCost : public AbstractQuadraticCost {
  public:
-  // Typedefs
-  typedef double value_type;
-  typedef std::size_t index_type;
-  typedef int integer_type;
-
-  Cost() {
-    // Create parameters
+  WeightedSumOfSquaresCost(const index_t &sz) : sz_(sz) {
+    parameters.w = bopt::create_variable_vector("w", sz);
   }
 
- protected:
-  virtual void add_to_program(OSC &osc_program) const = 0;
+  bopt::quadratic_cost<double>::shared_ptr to_cost() override;
+
+  struct parameters {
+    std::vector<bopt::variable> w;
+  };
+
+  // Weighting
+  vector_t w;
+
+  parameters parameters;
 
  private:
-};
-
-class EffortSquaredCost : public Cost {
- public:
-  friend class OSC;
-
-  EffortSquaredCost() {}
-
-  void add_to_program(OSC &osc_program) const override;
-
- private:
+  index_t sz_ = 0;
 };
 
 }  // namespace osc

@@ -9,7 +9,7 @@
 TEST(Contact, CreateFrameTask) {
   // Load a model
 
-  // auto task = osc::FrameTaskNew::create(*ModelLoader::shared_resource_, "LeftFootFront");
+  // auto task = osc::FrameTask::create(*ModelLoader::shared_resource_, "LeftFootFront");
 }
 
 TEST(Contact, CreateContact) {

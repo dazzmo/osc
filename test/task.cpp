@@ -37,7 +37,7 @@ pinocchio::Model* ModelLoader::shared_resource_ = nullptr;
 TEST(Task, CreateFrameTask) {
   // Load a model
 
-  // auto task = osc::FrameTaskNew::create(*ModelLoader::shared_resource_, "LeftFootFront");
+  // auto task = osc::FrameTask::create(*ModelLoader::shared_resource_, "LeftFootFront");
 }
 
 TEST(Task, FrameTaskEvaluate) {
@@ -52,11 +52,12 @@ TEST(Task, FrameTaskEvaluate) {
   q[6] = 1.0;
   pinocchio::framesForwardKinematics(model, data, q);
 
-  auto task = osc::FrameTaskNew::create(model, "LeftFootFront");
+  auto task = osc::FrameTask::create(model, "LeftFootFront");
 
   Eigen::MatrixXd J = Eigen::MatrixXd::Zero(6, model.nv);
   Eigen::VectorXd bias = Eigen::VectorXd::Zero(6);
-  task->evaluate(model, data, J, bias);
+  task->jacobian(model, data, J);
+  task->bias_acceleration(model, data, bias);
 }
 
 TEST(Task, FrameTaskSymbolicEvaluate) {
@@ -66,35 +67,17 @@ TEST(Task, FrameTaskSymbolicEvaluate) {
   pinocchio::urdf::buildModel(urdf_filename, model);
 
   osc::model_sym_t model_sym = model.cast<osc::sym_t>();
-  osc::data_sym_t data(model_sym);
+  osc::data_sym_t data_sym(model_sym);
 
   osc::vector_sym_t q = osc::create_symbolic_vector("q", model.nq);
-  pinocchio::framesForwardKinematics(model_sym, data, q);
+  pinocchio::framesForwardKinematics(model_sym, data_sym, q);
 
-  auto task = osc::FrameTaskNew::create(model, "LeftFootFront");
+  auto task = osc::FrameTask::create(model, "LeftFootFront");
 
   osc::matrix_sym_t J = osc::matrix_sym_t::Zero(6, model.nv);
   osc::vector_sym_t bias = osc::vector_sym_t::Zero(6);
-  task->symbolic_evaluate(model_sym, data, J, bias);
-}
-
-TEST(Task, AddFrameTaskToProgram) {
-  // Load a model
-  const std::string urdf_filename = "cassie.urdf";
-  pinocchio::Model model;
-  pinocchio::urdf::buildModel(urdf_filename, model);
-
-  osc::model_sym_t model_sym = model.cast<osc::sym_t>();
-  osc::data_sym_t data(model_sym);
-
-  osc::vector_sym_t q = osc::create_symbolic_vector("q", model.nq);
-  pinocchio::framesForwardKinematics(model_sym, data, q);
-
-  auto task = osc::FrameTaskNew::create(model, "LeftFootFront");
-
-  osc::OSC program(model, 10);
-  osc::OSC::TaskCost cost(task);
-
+  task->jacobian(model_sym, data_sym, J);
+  task->bias_acceleration(model_sym, data_sym, bias);
 }
 
 int main(int argc, char** argv) {

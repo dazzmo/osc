@@ -25,7 +25,7 @@ class AdditionalDynamics : public osc::AbstractSystemDynamics {
 TEST(Dynamics, CreateFrameTask) {
   // Load a model
 
-  // auto task = osc::FrameTaskNew::create(*ModelLoader::shared_resource_,
+  // auto task = osc::FrameTask::create(*ModelLoader::shared_resource_,
   // "LeftFootFront");
 }
 

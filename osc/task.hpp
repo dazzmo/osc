@@ -15,33 +15,15 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 
 #include "osc/common.hpp"
+#include "osc/cost.hpp"
 #include "osc/holonomic.hpp"
 #include "osc/pid.hpp"
-#include "osc/program.hpp"
 
 namespace osc {
 
 // Forward declaration of OSC
 class OSC;
 
-/**
- * @brief Parameters specific to a given task
- *
- */
-template <typename Vector>
-struct task_parameters {
-  // Task weighting vector
-  Vector w;
-  // Desired task acceleration
-  Vector xacc_d;
-  // todo - Additional parameters that can be added
-};
-
-/**
- * @brief A task of the form Ax + b = J \ddot q + \dot J \dot q and error
- * measure.
- *
- */
 class AbstractTask : public HolonomicExpression {
  public:
   /**
@@ -53,23 +35,16 @@ class AbstractTask : public HolonomicExpression {
   virtual void evaluate_error(const model_t &model, data_t &data, vector_t &e,
                               vector_t &e_dot) = 0;
 
-  struct parameters {
-    vector_t weighting;
-    vector_t desired;
-  };
-
-  parameters parameters;
-
  private:
 };
 
-class FrameTaskNew : public AbstractTask {
+class FrameTask : public AbstractTask {
  public:
   enum class Type { Position = 0, Orientation, Full };
 
-  FrameTaskNew(const model_t &model, const std::string &frame_name,
-               const Type &type = Type::Full,
-               const std::string &reference_frame = "universe")
+  FrameTask(const model_t &model, const std::string &frame_name,
+            const Type &type = Type::Full,
+            const std::string &reference_frame = "universe")
       : AbstractTask(),
         type(type),
         frame_name(frame_name),
@@ -90,12 +65,12 @@ class FrameTaskNew : public AbstractTask {
     }
   }
 
-  static std::shared_ptr<FrameTaskNew> create(
+  static std::shared_ptr<FrameTask> create(
       const model_t &model, const std::string &frame_name,
       const Type &type = Type::Full,
       const std::string &reference_frame = "universe") {
-    return std::make_shared<FrameTaskNew>(model, frame_name, type,
-                                          reference_frame);
+    return std::make_shared<FrameTask>(model, frame_name, type,
+                                       reference_frame);
   }
 
   void jacobian(const model_t &model, data_t &data, matrix_t &J) override {
@@ -208,272 +183,141 @@ class FrameTaskNew : public AbstractTask {
   }
 };
 
-// class CentreOfMassTaskNew : public AbstractTask {
-//  public:
-//   struct reference {
-//     vector3_t position;
-//     vector3_t velocity;
-//   };
-
-//   void evaluate(const model_t &model, const data_t &data, matrix_t &J,
-//                 vector_t &dJdq) override {
-//     evaluate_tpl(model, data, J, dJdq);
-//   }
-
-//   virtual void symbolic_evaluate(const model_sym_t &model,
-//                                  const data_sym_t &data, sym_t &A, sym_t
-//                                  &b)
-//                                  {
-//     evaluate_tpl(model, data, J, dJdq);
-//   };
-
-//   reference target;
-
-//   void evaluate_error(const model_t &model, const data_t &data, vector_t
-//   &e,
-//                       vector_t &e_dot) {
-//     // Compute centre of mass with respect to reference frame
-//     e = data.oMf[model.getFrameId(reference_frame)].actInv(data.com[0]) -
-//         target.position;
-//     // Also compute centre of mass velocity
-//     e_dot =
-//     data.oMf[model.getFrameId(reference_frame)].actInv(data.vcom[0])
-//     -
-//             target.velocity;
-//   }
-
-//  private:
-//   template <typename T>
-//   void evaluate_tpl(const pinocchio::ModelTpl<T> &model,
-//                     const pinocchio::DataTpl<T> &data, Eigen::MatrixX<T>
-//                     &J, Eigen::VectorX<T> &dJdq) {
-//     pinocchio::jacobianCenterOfMass(model, data, J);
-//     dJdq = data.acom[0];
-//   }
-// };
-
-/**
- * @brief
- *
- */
-template <typename ValueType, typename IndexType = std::size_t,
-          typename IntegerType = int>
-class TaskTpl : public OSCComponent {
-  friend class OSC;
-
+class CentreOfMassTask : public AbstractTask {
  public:
-  // Typedefs
-  typedef ValueType value_type;
-  typedef IndexType index_type;
-  typedef IntegerType integer_type;
+  CentreOfMassTask(const model_t &model,
+                      const std::string &reference_frame = "universe")
+      : AbstractTask() {}
 
-  TaskTpl() : dimension_(index_type(0)), pid(index_type(0)) {}
-
-  TaskTpl(const index_type &dim) : dimension_(dim), pid(dim) {
-    set_dimension(dim);
-  }
-
-  index_type dimension() const { return dimension_; }
-
-  /**
-   * @brief Priority of the task, lower values indicate a higher priority
-   *
-   */
-  index_type priority;
-
-  /**
-   * @brief PID gains for task tracking
-   *
-   */
-  pid_gains<value_type> pid;
-
-  /**
-   * @brief Add the task to the program
-   *
-   * @param program
-   */
-  virtual void add_to_program(OSC &program) const = 0;
-
-  /**
-   * @brief Compute the error of the task given the current state of the
-   * model.
-   *
-   * @param model
-   * @param data
-   * @param e
-   */
-  virtual void compute_task_error(const model_t &model, const data_t &data,
-                                  pid_error<value_type> &e) = 0;
-
-  /**
-   * @brief Modifyable task parameters
-   *
-   * @return task_parameters<value_type>&
-   */
-  task_parameters<vector_t> &parameters() { return parameters_d; }
-
- protected:
-  /**
-   * @brief Set the dimension of the task, such that the dimension is the
-   * dimension of the error of the system when considering the task (e.g.
-   * typically the dimension of the Lie algebra)
-   *
-   * @param dimension
-   */
-  void set_dimension(const index_type &dimension) {
-    dimension_ = dimension;
-    // Create parameters
-    parameters_v.w = bopt::create_variable_vector("w", dimension);
-    parameters_d.w = vector_t::Ones(dimension);
-
-    parameters_v.xacc_d = bopt::create_variable_vector("xacc_d", dimension);
-    parameters_d.xacc_d = vector_t::Zero(dimension);
-
-    pid.resize(dimension);
-    pid.p.setOnes();
-    pid.i.setOnes();
-    pid.d.setZero();
-  }
-
-  // Parameter variables
-  task_parameters<std::vector<bopt::variable>> parameters_v;
-  task_parameters<vector_t> parameters_d;
-
- private:
-  // Dimension of the task
-  index_type dimension_;
-};
-
-typedef TaskTpl<double> Task;
-
-/**
- * @brief Frame task, used for tracking a desired frame in SE3. Tasks can be
- * purely positional, rotational or the full SE3.
- *
- */
-class FrameTask : public Task {
-  friend class OSC;
-
- public:
-  /**
-   * @brief Types of frame tasks.
-   *
-   */
-  enum class Type { Position = 0, Orientation, Full };
-
-  typedef pinocchio::SE3 se3_t;
-  typedef pinocchio::Motion twist_t;
-
-  FrameTask(const model_t &model, const std::string &frame_name,
-            const Type &type = Type::Full,
-            const std::string &reference_frame = "universe");
-
-  static std::shared_ptr<FrameTask> create(
-      const model_t &model, const std::string &frame_name,
-      const Type &type = Type::Full,
-      const std::string &reference_frame = "universe") {
-    return std::make_shared<FrameTask>(model, frame_name, type,
-                                       reference_frame);
-  }
-
-  struct task_state {
-    se3_t pose = se3_t::Identity();
-    twist_t twist = twist_t::Zero();
+  struct reference {
+    vector3_t position;
+    vector3_t velocity;
   };
 
-  typedef task_state task_state_t;
-  typedef task_state_t reference_t;
+  void jacobian(const model_t &model, data_t &data, matrix_t &J) override {
+    jacobian_tpl<double>(model, data, J);
+  }
 
-  void compute_task_error(const model_t &model, const data_t &data,
-                          pid_error<value_type> &e) override;
+  void bias_acceleration(const model_t &model, data_t &data,
+                         vector_t &bias) override {
+    bias_acceleration_tpl<double>(model, data, bias);
+  }
 
-  reference_t target;
+  void jacobian(const model_sym_t &model, data_sym_t &data,
+                matrix_sym_t &J) override {
+    jacobian_tpl<sym_t>(model, data, J);
+  }
 
- protected:
-  void add_to_program(OSC &program) const override;
+  void bias_acceleration(const model_sym_t &model, data_sym_t &data,
+                         vector_sym_t &bias) override {
+    bias_acceleration_tpl<sym_t>(model, data, bias);
+  }
 
- private:
-  Type type;
-  string_t frame;
+  reference target;
   string_t reference_frame;
-};
 
-/**
- * @brief Centre of Mass tracking task.
- *
- */
-class CentreOfMassTask : public Task {
-  friend class OSC;
-
- public:
-  CentreOfMassTask(const model_t &model, const std::string &reference_frame);
-
-  static std::shared_ptr<CentreOfMassTask> create(
-      const model_t &model, const std::string &reference_frame = "universe") {
-    return std::make_shared<CentreOfMassTask>(model, reference_frame);
+  void evaluate_error(const model_t &model, const data_t &data, vector_t &e,
+                      vector_t &e_dot) {
+    // Compute centre of mass with respect to reference frame
+    e = data.oMf[model.getFrameId(reference_frame)].actInv(data.com[0]) -
+        target.position;
+    // Also compute centre of mass velocity
+    e_dot = data.oMf[model.getFrameId(reference_frame)].actInv(data.vcom[0]) -
+            target.velocity;
   }
 
-  struct task_state {
-    vector3_t position = vector3_t::Zero();
-    vector3_t velocity = vector3_t::Zero();
-  };
-
-  typedef task_state reference_t;
-
-  void compute_task_error(const model_t &model, const data_t &data,
-                          pid_error<value_type> &e) override;
-
-  reference_t reference;
-
- protected:
-  void add_to_program(OSC &program) const override;
+ private:
+  template <typename T>
+  void evaluate_tpl(const pinocchio::ModelTpl<T> &model,
+                    const pinocchio::DataTpl<T> &data, Eigen::MatrixX<T> &J,
+                    Eigen::VectorX<T> &dJdq) {
+    pinocchio::jacobianCenterOfMass(model, data, J);
+    dJdq = data.acom[0];
+  }
 
  private:
+  template <typename T>
+  void jacobian_tpl(const pinocchio::ModelTpl<T> &model,
+                    pinocchio::DataTpl<T> &data, Eigen::MatrixX<T> &J) {
+    J = pinocchio::jacobianCenterOfMass(model, data);
+  }
+
+  template <typename T>
+  void bias_acceleration_tpl(const pinocchio::ModelTpl<T> &model,
+                             pinocchio::DataTpl<T> &data,
+                             Eigen::VectorX<T> &bias) {
+    bias = data.acom[0];
+  }
+};
+
+class JointTrackingTask : public AbstractTask {
+ public:
+  JointTrackingTask(const model_t &model) : AbstractTask() {}
+
+  struct reference {
+    vector_t position;
+    vector_t velocity;
+  };
+
+  void jacobian(const model_t &model, data_t &data, matrix_t &J) override {
+    // For all joints in the system, set the entries to 1
+  }
+
+  void bias_acceleration(const model_t &model, data_t &data,
+                         vector_t &bias) override {
+    bias.setZero();
+  }
+
+  void jacobian(const model_sym_t &model, data_sym_t &data,
+                matrix_sym_t &J) override {}
+
+  void bias_acceleration(const model_sym_t &model, data_sym_t &data,
+                         vector_sym_t &bias) override {
+    bias.setZero();
+  }
+
+  reference target;
   string_t reference_frame;
-};
 
-/**
- * @brief Joint tracking task
- *
- */
-class JointTrackingTask : public Task {
-  friend class OSC;
-
- public:
-  JointTrackingTask(const model_t &model);
-
-  static std::shared_ptr<JointTrackingTask> create(const model_t &model) {
-    return std::make_shared<JointTrackingTask>(model);
+  void evaluate_error(const model_t &model, const data_t &data, vector_t &e,
+                      vector_t &e_dot) {
+    // Compute centre of mass with respect to reference frame
+    e.setZero();
+    e_dot.setZero();
   }
-
-  struct task_state {
-    vector_t joint_position;
-    vector_t joint_velocity;
-  };
-
-  typedef task_state task_state_t;
-  typedef task_state_t reference_t;
-
-  void compute_task_error(const model_t &model, const data_t &data,
-                          pid_error<value_type> &e) override;
-
-  reference_t reference;
-
- protected:
-  void add_to_program(OSC &program) const override;
 
  private:
 };
 
-class AbstractTaskCost : public bopt::quadratic_cost<double> {
+class AbstractTaskCost : public AbstractQuadraticCost {
  public:
   AbstractTaskCost(const model_t &model,
-                   const std::shared_ptr<AbstractTask> &task) {
+                   const std::shared_ptr<AbstractTask> &task)
+      : AbstractQuadraticCost() {}
+
+  /**
+   * @brief The task the cost is associated with
+   *
+   * @return std::shared_ptr<AbstractTask>&
+   */
+  std::shared_ptr<AbstractTask> &task() { return task_; }
+
+ protected:
+  std::shared_ptr<AbstractTask> task_;
+};
+
+/**
+ * @brief Weighted task cost of the form \f$ || \ddot x - \ddot x_d ||_w^2 \f$
+ *
+ */
+class WeightedTaskCost : public AbstractTaskCost {
+ public:
+  WeightedTaskCost(const model_t &model,
+                   const std::shared_ptr<AbstractTask> &task)
+      : AbstractTaskCost(model, task), pid(task->dimension) {
     parameters.w = bopt::create_variable_vector("w", task->dimension);
     parameters.x = bopt::create_variable_vector("x", task->dimension);
   }
-
-  virtual void update(const model_t &model, data_t &data) {}
 
   struct parameters {
     std::vector<bopt::variable> w;
@@ -481,112 +325,56 @@ class AbstractTaskCost : public bopt::quadratic_cost<double> {
   };
 
   parameters parameters;
+
+  // PID tracking gains
+  pid_gains<double> pid;
+
+  // Weighting
+  vector_t w;
+  // Desired task second derivative
+  vector_t x;
+
+  bopt::quadratic_cost<double>::shared_ptr to_cost(const model_t &model) const {
+    LOG(INFO) << "to_cost";
+
+    // Compute the target frame in the contact frame of the model
+    vector_sym_t q = create_symbolic_vector("q", model.nq);
+    vector_sym_t v = create_symbolic_vector("v", model.nv);
+    vector_sym_t a = create_symbolic_vector("a", model.nv);
+    vector_sym_t e = create_symbolic_vector("e", task_->dimension);
+
+    // Compute frame state
+    model_sym_t model_sym = model.cast<sym_t>();
+    data_sym_t data_sym(model_sym);
+
+    // Compute the kinematic tree state of the system
+    pinocchio::forwardKinematics(model_sym, data_sym, q, v, a);
+    pinocchio::updateFramePlacements(model_sym, data_sym);
+
+    // Compute Jacobian and bias
+    matrix_sym_t J(task_->dimension, model.nv);
+    vector_sym_t bias(task_->dimension);
+
+    task_->jacobian(model_sym, data_sym, J);
+    task_->bias_acceleration(model_sym, data_sym, bias);
+
+    // Set difference between task second derivative and desired
+    vector_sym_t error = J * a - bias - e;
+
+    vector_sym_t w = create_symbolic_vector("w", task_->dimension);
+
+    sym_t cost = error.transpose() * w.asDiagonal() * error;
+
+    return bopt::casadi::quadratic_cost<double>::create(
+        cost, casadi::eigen_to_casadi(a),
+        sym_vector_t({casadi::eigen_to_casadi(q), casadi::eigen_to_casadi(v),
+                      casadi::eigen_to_casadi(w), casadi::eigen_to_casadi(e)}));
+  }
 };
 
-/**
- * @brief Symbolic generation of a task into a cost, with the ability to perform
- * code generation.
- *
- */
-class SymbolicTaskCost : AbstractTaskCost {
- public:
-  SymbolicTaskCost(const model_t &model,
-                   const std::shared_ptr<AbstractTask> &task)
-      : AbstractTaskCost(model, task) {
-    // vector_sym_t w, q, v, ad;
-    // matrix_sym_t J;
-    // vector_sym_t bias;
-
-    // // Create parameters
-
-    // // Create model
-    // model_sym_t m = model.cast<sym_t>();
-    // data_sym_t d(m);
-
-    // pinocchio::forwardKinematics(m, d, q, v);
-    // pinocchio::updateFramePlacements(m, d);
-
-    // task->jacobian(m, d, J);
-    // task->bias_acceleration(m, d, bias);
-
-    // // Compute task coefficients
-    // matrix_t A = J.transpose() * w.asDiagonal() * J;
-    // vector_t b = 2.0 * (bias - ad).transpose() * w.asDiagonal() * J;
-
-    // // Compute symbolic expression
-    // A_eval_ = std::make_unique<bopt::casadi::expression_evaluator<double>>(
-    //     casadi::eigen_to_casadi(A),
-    //     ::casadi::SXVector(
-    //         {casadi::eigen_to_casadi(q), casadi::eigen_to_casadi(v),
-    //          casadi::eigen_to_casadi(w), casadi::eigen_to_casadi(ad)}));
-
-    // b_eval_ = std::make_unique<bopt::casadi::expression_evaluator<double>>(
-    //     casadi::eigen_to_casadi(b),
-    //     ::casadi::SXVector(
-    //         {casadi::eigen_to_casadi(q), casadi::eigen_to_casadi(v),
-    //          casadi::eigen_to_casadi(w), casadi::eigen_to_casadi(ad)}));
-  }
-
-  // Dummy override
-  integer_type operator()(const value_type **arg, value_type *ret) override {
-    *ret = 0.0;
-    return 0;
-  }
-
-  integer_type A(const double **arg, double *res) override {
-    return (*A_eval_)(arg, res);
-  }
-
-  integer_type A_info(out_info_t &info) override { return A_eval_->info(info); }
-
-  integer_type b(const double **arg, double *res) override {
-    return (*b_eval_)(arg, res);
-  }
-
-  integer_type b_info(out_info_t &info) override { return b_eval_->info(info); }
-
- private:
-  // Codegen evaluation quantities
-  std::unique_ptr<bopt::evaluator<double>> A_eval_;
-  std::unique_ptr<bopt::evaluator<double>> b_eval_;
-};
-
-/**
- * @brief Quadratic cost representation for a holonomic expression
- *
- */
-class TaskCost : AbstractTaskCost {
- public:
-  TaskCost(const model_t &model, const std::shared_ptr<AbstractTask> &task)
-      : AbstractTaskCost(model, task) {
-  }
-
-  std::shared_ptr<AbstractTask> task_;
-
-  // Dummy override
-  integer_type operator()(const value_type **arg, value_type *ret) override {
-    *ret = 0.0;
-    return 0;
-  }
-
-  integer_type A(const double **arg, double *res) override {
-    return (*A_eval_)(arg, res);
-  }
-
-  integer_type A_info(out_info_t &info) override { return A_eval_->info(info); }
-
-  integer_type b(const double **arg, double *res) override {
-    return (*b_eval_)(arg, res);
-  }
-
-  integer_type b_info(out_info_t &info) override { return b_eval_->info(info); }
-
- protected:
-  // Codegen evaluation quantities
-  std::unique_ptr<bopt::evaluator<double>> A_eval_;
-  std::unique_ptr<bopt::evaluator<double>> b_eval_;
-
- private:
+class HeirarchicalTaskCost {
+  // todo - custom qudratic cost
+  // class Cost : public bopt::quadratic_cost<double> {};
 };
 
 }  // namespace osc

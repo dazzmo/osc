@@ -6,22 +6,15 @@
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 
+#include "osc/constraint.hpp"
 #include "osc/holonomic.hpp"
 
 namespace osc {
 
-class OSC;
-
-class AbstractLinearConstraint {
+class AbstractContact : public HolonomicConstraint {
  public:
-  virtual std::shared_ptr<bopt::linear_constraint<double>> to_constraint(
-      const model_t &model) const = 0;
-};
-
-class AbstractContactConstraint : public HolonomicConstraint {
- public:
-  AbstractContactConstraint(const model_t &model, const string_t &frame,
-                            const index_t &dimension)
+  AbstractContact(const model_t &model, const string_t &frame,
+                  const index_t &dimension)
       : HolonomicConstraint(dimension), frame(frame) {
     // Ensure the frame exists on the model
     if (model.getFrameId(frame) == model.frames.size()) {
@@ -34,38 +27,37 @@ class AbstractContactConstraint : public HolonomicConstraint {
  private:
 };
 
-class AbstractFrictionContact : public AbstractContactConstraint {
+class AbstractFrictionContact : public AbstractContact {
  public:
   AbstractFrictionContact(const model_t &model, const string_t &frame,
                           const index_t &dimension)
-      : AbstractContactConstraint(model, frame, dimension) {
-    parameters.n = vector3_t::UnitZ();
-    parameters.t = vector3_t::UnitX();
-    parameters.b = vector3_t::UnitY();
+      : AbstractContact(model, frame, dimension) {
+    n = vector3_t::UnitZ();
+    t = vector3_t::UnitX();
+    b = vector3_t::UnitY();
 
-    parameters.mu = 1.0;
+    mu = 1.0;
 
-    parameters.lambda_ub =
+    lambda_ub =
         vector_t::Constant(dimension, std::numeric_limits<double>::infinity());
-    parameters.lambda_lb =
+    lambda_lb =
         vector_t::Constant(dimension, -std::numeric_limits<double>::infinity());
   }
 
-  struct parameters {
-    // Contact surface normal vector
-    vector3_t n;
-    // Contact surface tangent vector
-    vector3_t t;
-    // Contact surface binormal vector
-    vector3_t b;
+  // Contact surface normal vector
+  vector3_t n;
+  // Contact surface tangent vector
+  vector3_t t;
+  // Contact surface binormal vector
+  vector3_t b;
 
-    double mu;
+  // Friction coefficient
+  double mu;
 
-    vector_t lambda_ub;
-    vector_t lambda_lb;
-  };
-
-  parameters parameters;
+  // Friction force upper bound
+  vector_t lambda_ub;
+  // Friction force lower bound
+  vector_t lambda_lb;
 };
 
 class FrictionContact3D : public AbstractFrictionContact {
@@ -117,7 +109,8 @@ class FrictionContact3D : public AbstractFrictionContact {
 class FrictionConeConstraint : public AbstractLinearConstraint {
  public:
   FrictionConeConstraint(
-      const std::shared_ptr<AbstractFrictionContact> &contact) {
+      const std::shared_ptr<AbstractFrictionContact> &contact)
+      : contact_(contact) {
     // Create parameters
     mu = bopt::variable("mu");
     n = bopt::create_variable_vector("n", 3);
@@ -134,12 +127,11 @@ class FrictionConeConstraint : public AbstractLinearConstraint {
   // Remaining vector for contact (in contact surface frame)
   std::vector<bopt::variable> b;
 
-  // todo - could also make a specialised constraint (without codegen and
-  // produce this)
-
   // Return linear constraint
   bopt::linear_constraint<double>::shared_ptr to_constraint(
       const model_t &model) const override;
+
+  // Associated friction contact with the constraint
   const std::shared_ptr<AbstractFrictionContact> &contact() const {
     return contact_;
   }
@@ -150,7 +142,7 @@ class FrictionConeConstraint : public AbstractLinearConstraint {
 
 class NoSlipConstraint : public AbstractLinearConstraint {
  public:
-  NoSlipConstraint(const std::shared_ptr<AbstractContactConstraint> &contact)
+  NoSlipConstraint(const std::shared_ptr<AbstractContact> &contact)
       : contact_(contact) {
     epsilon = bopt::create_variable_vector("eps", contact->dimension);
   }
@@ -164,11 +156,11 @@ class NoSlipConstraint : public AbstractLinearConstraint {
       const model_t &model) const override;
 
  private:
-  std::shared_ptr<AbstractContactConstraint> contact_;
+  std::shared_ptr<AbstractContact> contact_;
 };
 
 // class NoSlipCost : public AbstractQuadraticCost {
-//   NoSlipCost(const std::shared_ptr<AbstractContactConstraint> &contact) {}
+//   NoSlipCost(const std::shared_ptr<AbstractContact> &contact) {}
 
 //   // Slack variable for no-slip condition in linear constraint defining
 //   // contact
