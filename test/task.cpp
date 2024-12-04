@@ -7,33 +7,6 @@
 
 #include <pinocchio/parsers/urdf.hpp>
 
-class ModelLoader : public testing::Test {
- protected:
-
-  static void SetUpTestSuite() {
-    shared_resource_ = new pinocchio::Model();
-    const std::string urdf_filename = "cassie.urdf";
-    pinocchio::Model model;
-    pinocchio::urdf::buildModel(urdf_filename, model);
-  }
-
-  static void TearDownTestSuite() {
-    delete shared_resource_;
-    shared_resource_ = nullptr;
-  }
-
-  // You can define per-test set-up logic as usual.
-  void SetUp() override {  }
-
-  // You can define per-test tear-down logic as usual.
-  void TearDown() override {  }
-
-  // Some expensive resource shared by all tests.
-  static pinocchio::Model* shared_resource_;
-};
-
-pinocchio::Model* ModelLoader::shared_resource_ = nullptr;
-
 TEST(Task, CreateFrameTask) {
   // Load a model
 
@@ -46,9 +19,11 @@ TEST(Task, FrameTaskEvaluate) {
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
 
+  std::cout << model;
+
   pinocchio::Data data(model);
 
-  Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
+  Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq), v = Eigen::VectorXd(model.nv);
   q[6] = 1.0;
   pinocchio::framesForwardKinematics(model, data, q);
 
@@ -56,8 +31,8 @@ TEST(Task, FrameTaskEvaluate) {
 
   Eigen::MatrixXd J = Eigen::MatrixXd::Zero(6, model.nv);
   Eigen::VectorXd bias = Eigen::VectorXd::Zero(6);
-  task->jacobian(model, data, J);
-  task->bias_acceleration(model, data, bias);
+  task->jacobian(model, data, q, J);
+  task->bias_acceleration(model, data, q, v, bias);
 }
 
 TEST(Task, FrameTaskSymbolicEvaluate) {
@@ -70,14 +45,15 @@ TEST(Task, FrameTaskSymbolicEvaluate) {
   osc::data_sym_t data_sym(model_sym);
 
   osc::vector_sym_t q = osc::create_symbolic_vector("q", model.nq);
+  osc::vector_sym_t v = osc::create_symbolic_vector("v", model.nv);
   pinocchio::framesForwardKinematics(model_sym, data_sym, q);
 
   auto task = osc::FrameTask::create(model, "LeftFootFront");
 
   osc::matrix_sym_t J = osc::matrix_sym_t::Zero(6, model.nv);
   osc::vector_sym_t bias = osc::vector_sym_t::Zero(6);
-  task->jacobian(model_sym, data_sym, J);
-  task->bias_acceleration(model_sym, data_sym, bias);
+  task->jacobian(model_sym, data_sym, q, J);
+  task->bias_acceleration(model_sym, data_sym, q, v, bias);
 }
 
 int main(int argc, char** argv) {

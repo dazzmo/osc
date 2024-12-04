@@ -1,9 +1,12 @@
 #pragma once
 
+#define GLOG_USE_GLOG_EXPORT
+#include <glog/logging.h>
+
 #include <Eigen/Core>
 #include <bopt/variable.hpp>
-#include <casadi/casadi.hpp>
 #include <pinocchio/autodiff/casadi.hpp>
+#include <pinocchio/fwd.hpp>
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 

@@ -1,17 +1,20 @@
-find_package(Boost REQUIRED)
 find_package(Eigen3 3.3 REQUIRED)
 find_package(pinocchio REQUIRED)
-
+find_package(casadi REQUIRED)
 find_package(bopt REQUIRED)
+find_package(glog REQUIRED)
 
 # Collect source files
 SET(${PROJECT_NAME}_SOURCES
 common.cpp
-contact.cpp
 cost.cpp
 dynamics.cpp
 osc.cpp
-task.cpp
+tasks/centre_of_mass.cpp
+tasks/costs.cpp
+tasks/frame.cpp
+contact/constraints.cpp
+contact/contact.cpp
 )
 
 SET(${PROJECT_NAME}_LIBRARIES
@@ -29,28 +32,20 @@ target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_LIBRARIES})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 
-message("CMAKE_CURRENT_LIST_DIR ${CMAKE_CURRENT_LIST_DIR}")
-
-# Jesse: not actually sure what it does, since we dont have a include folder do we need the INSTALL_INTERFACE
-# dont know about the build interface
 target_include_directories(${PROJECT_NAME}
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>"
-    # "$<INSTALL_INTERFACE:include>"
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-unused-parameter -pipe)
 
 add_library(osc::osc ALIAS ${PROJECT_NAME})
 
-## First of all, we need to install the library itself.
 install(TARGETS ${PROJECT_NAME}
     EXPORT osc-export
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
-    # Perhaps use this, instead of installing include dir
-    #PUBLIC_HEADER DESTINATION include
-    INCLUDES DESTINATION include # We need this right?
+    INCLUDES DESTINATION include
     RUNTIME DESTINATION bin
 )
 

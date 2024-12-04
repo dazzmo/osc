@@ -14,28 +14,31 @@
 #include <bopt/solvers/qpoases.hpp>
 
 #include "osc/contact.hpp"
+#include "osc/contact/constraints.hpp"
 #include "osc/cost.hpp"
 #include "osc/dynamics.hpp"
-#include "osc/task.hpp"
+#include "osc/tasks/costs.hpp"
 
 namespace osc {
 
+class ProblemFormulation {
+ public:
+  // Collect tasks
+  void add_task();
+  void add_contact();
+  void add_constraint();
+  void add_cost();
+
+ private:
+};
+
 class OSC {
-  friend class OSCComponent;
 
  public:
-  OSC(model_t &model, const index_t &nu)
-      : model(model), model_sym(model.cast<sym_t>()), program_() {
-    // Create system dynamics
-    variables_.a = bopt::create_variable_vector("a", model.nv);
-    variables_.u = bopt::create_variable_vector("u", nu);
-    parameters_.q = bopt::create_variable_vector("q", model.nq);
-    parameters_.v = bopt::create_variable_vector("v", model.nv);
+  OSC(model_t &model, const index_t &nu);
 
-    // Add variables to the program
-    program_.add_variables(variables_.a);
-    program_.add_parameters(parameters_.q);
-    program_.add_parameters(parameters_.v);
+  void add_variables(const std::vector<bopt::variable> &v) {
+    program_.add_variables(v);
   }
 
   void add_parameters(const std::vector<bopt::variable> &p) {
@@ -51,7 +54,9 @@ class OSC {
    */
   void add_cost(const std::shared_ptr<bopt::quadratic_cost<double>> &cost,
                 std::vector<bopt::variable> &x,
-                std::vector<std::vector<bopt::variable>> &p) {}
+                std::vector<std::vector<bopt::variable>> &p) {
+    program_.add_quadratic_cost(cost, {x}, p);
+  }
 
   /**
    * @brief Add a generic constraint to the program
@@ -62,26 +67,16 @@ class OSC {
    */
   void add_constraint(
       const std::shared_ptr<bopt::linear_constraint<double>> &constraint,
-      std::vector<bopt::variable> &x,
-      std::vector<std::vector<bopt::variable>> &p) {}
-
-  /**
-   * @brief Add a frame task to the program
-   *
-   * @param name
-   * @param task
-   */
-  void add_task(const string_t &name,
-                const std::shared_ptr<FrameTask> &task) {
-    frame_tasks_index_map_.insert({name, frame_tasks_.size()});
-    frame_tasks_.push_back(task);
+      const std::vector<bopt::variable> &x,
+      const std::vector<std::vector<bopt::variable>> &p) {
+    program_.add_linear_constraint(constraint, {x}, p);
   }
 
-  std::shared_ptr<FrameTask> get_frame_task(const string_t &name) {
-    if (frame_tasks_index_map_.find(name) != frame_tasks_index_map_.end()) {
-      return frame_tasks_[frame_tasks_index_map_.at(name)];
-    }
-    return nullptr;
+  void add_bounding_box_constraint(
+      const std::shared_ptr<bopt::bounding_box_constraint<double>> &constraint,
+      const std::vector<bopt::variable> &x,
+      const std::vector<std::vector<bopt::variable>> &p) {
+    program_.add_bounding_box_constraint(constraint, {x}, p);
   }
 
   /**
@@ -90,19 +85,7 @@ class OSC {
    * @param cost
    */
   void add_task_cost(const string_t &name,
-                     const std::shared_ptr<WeightedTaskCost> &cost) {
-    task_costs_index_map_.insert({name, task_costs_.size()});
-    task_costs_.push_back(cost);
-
-    // Add parameters to the program
-    program_.add_parameters(cost->parameters.w);
-    program_.add_parameters(cost->parameters.x);
-
-    // Add cost to the program
-    program_.add_quadratic_cost(
-        cost->to_cost(model), {variables_.a},
-        {parameters_.q, parameters_.v, cost->parameters.w, cost->parameters.x});
-  }
+                     const std::shared_ptr<WeightedTaskCost> &cost);
 
   std::shared_ptr<WeightedTaskCost> get_task_cost(const string_t &name) {
     if (task_costs_index_map_.find(name) != task_costs_index_map_.end()) {
@@ -112,7 +95,7 @@ class OSC {
   }
 
   /**
-   * @brief Add a contact point for the system
+   * @brief Adds variables related to the contact point
    *
    * @param contact
    */
@@ -120,78 +103,53 @@ class OSC {
     program_.add_variables(contact->lambda);
   }
 
-  // std::shared_ptr<AbstractFrictionContact> get_contact(const string_t &name)
-  // {}
+  /**
+   * @brief Add a no-slip condition constraint to the program
+   *
+   * @param constraint
+   */
+  void add_constraint(const std::shared_ptr<NoSlipConstraint> &constraint);
+
+  void update_constraint(const std::shared_ptr<NoSlipConstraint> &constraint);
 
   /**
    * @brief Add a no-slip condition constraint to the program
    *
    * @param constraint
    */
-  void add_no_slip_constraint(
-      const std::shared_ptr<NoSlipConstraint> &constraint) {
-    // Add slack variables
-    program_.add_parameters(constraint->epsilon);
+  void add_constraint(
+      const std::shared_ptr<FrictionForceConstraint> &constraint);
 
-    program_.add_linear_constraint(
-        constraint->to_constraint(model), {variables_.a},
-        {parameters_.q, parameters_.v, constraint->epsilon});
-  }
-
-  /**
-   * @brief Add dynamics to the program.
-   *
-   * @param dynamics
-   */
-  void add_dynamics_constraint(
-      const std::shared_ptr<AbstractSystemDynamics> &dynamics) {
-    // Create vector for linear expression
-
-    // todo - Create constraint force vector in same order as in dynamics
-
-    std::vector<bopt::variable> x = {};
-    x.insert(x.end(), variables_.a.begin(), variables_.a.end());
-    x.insert(x.end(), variables_.u.begin(), variables_.u.end());
-    x.insert(x.end(), variables_.lambda.begin(), variables_.lambda.end());
-
-    program_.add_linear_constraint(dynamics->to_constraint(model), {x},
-                                   {parameters_.q, parameters_.v});
-  }
+  void update_constraint(
+      const std::shared_ptr<FrictionForceConstraint> &constraint);
 
   /**
    * @brief Add a friction cone constraint to the program.
    *
    * @param constraint
    */
-  void add_friction_constraint(
-      const std::shared_ptr<FrictionConeConstraint> &constraint) {
-    // Add parameters to the program
-    program_.add_parameters(constraint->n);
-    program_.add_parameters(constraint->t);
-    program_.add_parameters(constraint->b);
-    program_.add_parameter(constraint->mu);
+  void add_constraint(
+      const std::shared_ptr<FrictionConeConstraint> &constraint);
 
-    // Add constraint to program
-    program_.add_linear_constraint(
-        constraint->to_constraint(model), {constraint->contact()->lambda},
-        {constraint->n, constraint->t, constraint->b, {constraint->mu}});
-  }
+  /**
+   * @brief Updates the parameters in the program for the given friction cone
+   * constraint.
+   *
+   * @param constraint
+   */
+  void update_constraint(
+      const std::shared_ptr<FrictionConeConstraint> &constraint);
 
-  // void update_friction_constraint(const string_t &name) {
-  //   // const auto constraint = find()...
-
-  //   for (int i = 0; i < 3; ++i) {
-  //     program_.set_parameter(constraint->n[i], constraint->contact()->n[i]);
-  //     program_.set_parameter(constraint->t[i], constraint->contact()->t[i]);
-  //     program_.set_parameter(constraint->b[i], constraint->contact()->b[i]);
-  //   }
-
-  //   // Update any other features
-  // }
+  /**
+   * @brief Add dynamics to the program.
+   *
+   * @param dynamics
+   */
+  void add_constraint(const std::shared_ptr<AbstractSystemDynamics> &dynamics);
 
   void init() {
-    // All tasks added, finalise dynamics constraint
     qp_ = std::make_unique<bopt::solvers::qpoases_solver_instance>(program_);
+
     // Create solver
     is_initialised_ = true;
   }
@@ -201,6 +159,9 @@ class OSC {
    *
    */
   void loop(const vector_t &q, const vector_t &v);
+
+  const osc_parameters &parameters() const { return parameters_; }
+  const osc_variables &variables() const { return variables_; }
 
  private:
   // Model

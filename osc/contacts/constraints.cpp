@@ -1,9 +1,9 @@
-#include "osc/contact.hpp"
+#include "osc/contact/contact.hpp"
 
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
+#include <pinocchio/autodiff/casadi.hpp>
 
-#include "osc/osc.hpp"
 
 namespace osc {
 
@@ -51,15 +51,15 @@ bopt::linear_constraint<double>::shared_ptr NoSlipConstraint::to_constraint(
   data_sym_t data_sym(model_sym);
 
   // Compute the kinematic tree state of the system
-  pinocchio::forwardKinematics(model_sym, data_sym, q, v, a);
+  pinocchio::forwardKinematics<sym_t>(model_sym, data_sym, q, v, a);
   pinocchio::updateFramePlacements(model_sym, data_sym);
 
   // Compute Jacobian and bias
   matrix_sym_t J(3, model.nv);
   vector_sym_t bias(3);
 
-  contact_->jacobian(model_sym, data_sym, J);
-  contact_->bias_acceleration(model_sym, data_sym, bias);
+  contact_->jacobian(model_sym, data_sym, q, J);
+  contact_->bias_acceleration(model_sym, data_sym, q, v, bias);
 
   vector_sym_t no_slip = J * a - bias - e;
 
@@ -68,6 +68,18 @@ bopt::linear_constraint<double>::shared_ptr NoSlipConstraint::to_constraint(
       sym_vector_t({casadi::eigen_to_casadi(q), casadi::eigen_to_casadi(v),
                     casadi::eigen_to_casadi(e)}),
       bopt::bound_type::Equality);
+}
+
+// Return linear constraint
+bopt::bounding_box_constraint<double>::shared_ptr
+FrictionForceConstraint::to_constraint(const model_t &model) const {
+  vector_sym_t lb_sym = create_symbolic_vector("lb", 3);
+  vector_sym_t ub_sym = create_symbolic_vector("ub", 3);
+
+  return bopt::casadi::bounding_box_constraint<double>::create(
+      casadi::eigen_to_casadi(lb_sym), casadi::eigen_to_casadi(ub_sym),
+      sym_vector_t(
+          {casadi::eigen_to_casadi(lb_sym), casadi::eigen_to_casadi(ub_sym)}));
 }
 
 }  // namespace osc

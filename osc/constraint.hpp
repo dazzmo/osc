@@ -15,4 +15,10 @@ class AbstractLinearConstraint {
       const model_t &model) const = 0;
 };
 
+class AbstractBoundingBoxConstraint {
+ public:
+  virtual std::shared_ptr<bopt::bounding_box_constraint<double>> to_constraint(
+      const model_t &model) const = 0;
+};
+
 }  // namespace osc

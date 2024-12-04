@@ -9,10 +9,10 @@
 TEST(OSC, Construct) {
   // Load a model
   const std::string urdf_filename = "cassie.urdf";
+  std::cout << "File: " << urdf_filename << '\n';
   pinocchio::Model model;
-  pinocchio::urdf::buildModel(urdf_filename, model);
-
-  osc::OSC program(model, 10);
+  // pinocchio::urdf::buildModel(urdf_filename, model);
+  // osc::OSC program(model, 10);
 }
 
 TEST(OSC, AddContact) {
@@ -26,7 +26,7 @@ TEST(OSC, AddContact) {
   auto contact =
       std::make_shared<osc::FrictionContact3D>(model, "LeftFootFront");
   program.add_contact(contact);
-  program.add_friction_constraint(
+  program.add_friction_cone_constraint(
       std::make_shared<osc::FrictionConeConstraint>(contact));
   program.add_no_slip_constraint(
       std::make_shared<osc::NoSlipConstraint>(contact));

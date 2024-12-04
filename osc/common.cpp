@@ -16,8 +16,8 @@ namespace casadi {
   for (Eigen::Index i = 0; i < v.rows(); ++i) {
     for (Eigen::Index j = 0; j < v.cols(); ++j) {
       // Only fill in non-zero entries
-      if (!::casadi::is_zero(v(i, j)->at(0))) {
-        c(i, j) = v(i, j)->at(0);
+      if (!v(i, j).is_zero()) {
+        c(i, j) = v(i, j);
       }
     }
   }
