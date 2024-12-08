@@ -12,7 +12,7 @@ class LinearConstraint {
   enum Type { Equality = 0, Inequality, Bounds };
 
   LinearConstraint(const index_t &nc, const index_t &nv,
-                   const &type = Type::Equality)
+                   const Type &type = Type::Equality)
       : type_(type) {
     A_ = matrix_t::Zero(nc, nv);
     b_ = vector_t::Zero(nc);
@@ -41,6 +41,24 @@ class LinearConstraint {
   matrix_t A_;
   matrix_t b_;
 
+  vector_t lower_bound_;
+  vector_t upper_bound_;
+};
+
+class BoundConstraint {
+ public:
+  BoundConstraint(const index_t &nv) {
+    lower_bound_ = vector_t::Constant(nv, -std::numeric_limits<double>::max());
+    upper_bound_ = vector_t::Constant(nv, std::numeric_limits<double>::max());
+  }
+
+  const vector_t &upper_bound() const { return upper_bound_; }
+  vector_t &upper_bound() { return upper_bound_; }
+
+  const vector_t &lower_bound() const { return lower_bound_; }
+  vector_t &lower_bound() { return lower_bound_; }
+
+ private:
   vector_t lower_bound_;
   vector_t upper_bound_;
 };

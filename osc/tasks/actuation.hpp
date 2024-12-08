@@ -58,8 +58,10 @@ class MinimiseActuationTask : public ActuationTask {
   index_t nu_;
 };
 
-class ActuationLimitTask : public ActuationTask {
+class ActuationBounds : public BoundConstraint {
  public:
+  ActuationBounds(const index_t &nu) : BoundConstraint(nu) {}
+
  private:
 };
 

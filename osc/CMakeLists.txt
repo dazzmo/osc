@@ -6,9 +6,11 @@ find_package(glog REQUIRED)
 SET(${PROJECT_NAME}_SOURCES
 dynamics.cpp
 default_formulation.cpp
+trajectory_reference.cpp
 tasks/centre_of_mass.cpp
 tasks/posture.cpp
 tasks/frame.cpp
+tasks/motion.cpp
 contacts/contact.cpp
 )
 

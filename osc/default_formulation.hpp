@@ -13,6 +13,7 @@
 #include "osc/common.hpp"
 #include "osc/contacts/contact.hpp"
 #include "osc/dynamics.hpp"
+#include "osc/tasks/acceleration.hpp"
 #include "osc/tasks/actuation.hpp"
 #include "osc/tasks/motion.hpp"
 #include "osc/qp_data.hpp"
@@ -105,6 +106,7 @@ class DefaultFormulation {
     // todo - check that contact isn't currently being removed
     ContactInfo info;
     nk_ += contact->dim();
+    nv_ += contact->dim();
   }
 
   /**
@@ -213,6 +215,9 @@ class DefaultFormulation {
   std::vector<ContactReleaseInfo> contact_releases_;
 
   std::shared_ptr<InverseDynamics> dynamics_;
+
+  std::shared_ptr<AccelerationBounds> acceleration_bounds_;
+  std::shared_ptr<ActuationBounds> actuation_bounds_;
 
  private:
   // Model

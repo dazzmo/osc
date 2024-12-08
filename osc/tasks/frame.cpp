@@ -74,38 +74,39 @@ void FrameTask::compute_error(const model_t &model, data_t &data,
   // Reference wrt world
   const se3_t &oMr = data.oMf[reference_frame_id()];
   // Target wrt world
-  se3_t oMt = oMr.act(refernece_.position);
+  se3_t oMt = oMr.act(reference_.position);
   // Target wrt frame
   se3_t fMt = oMf.actInv(oMt);
 
   // Compute the rate of change of frame
   auto tMf = oMt.actInv(oMf);
 
-  twist_t v =
-      pinocchio::getFrameVelocity(model, data, model.getFrameId(frame_name)) -
-      refernece_.velocity;
+  twist_t dvel =
+      pinocchio::getFrameVelocity(model, data, frame_id()) -
+      pinocchio::getFrameVelocity(model, data, reference_frame_id()) -
+      reference_.velocity;
 
   if (type == Type::Position) {
     e_ = pinocchio::log6(fMt).linear();
-    e_dot_ = v.linear();
+    e_dot_ = dvel.linear();
   } else if (type == Type::Orientation) {
     e_ = pinocchio::log6(fMt).angular();
-    e_dot_ = v.angular();
+    e_dot_ = dvel.angular();
   } else if (type == Type::Full) {
     e_ = pinocchio::log6(fMt).toVector();
-    e_dot_ = v.toVector();
+    e_dot_ = dvel.toVector();
   }
 }
 
 void FrameTask::compute(const model_t &model, data_t &data, const vector_t &q,
                         const vector_t &v) {
   // Compute jacobian and derivative
-  compute_jacobian(model, data, q, v);
+  compute_jacobian(model, data, q);
   compute_jacobian_dot_q_dot(model, data, q, v);
   compute_error(model, data, q, v);
 
   // Compute desired task acceleration
-  xacc_des_ = -Kp_.asDiagonal() * e_ - Kd_.asDiagonal() * e_dot_;
+  xacc_des_ = -(Kp_.asDiagonal() * e_ + Kd_.asDiagonal() * e_dot_);
   if (type == Type::Position) {
     xacc_des_ += reference_.acceleration.linear();
   } else if (type == Type::Orientation) {

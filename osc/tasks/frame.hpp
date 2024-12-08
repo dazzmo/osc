@@ -37,6 +37,9 @@ class FrameTask : public MotionTask {
     reference_.set(ref);
   }
 
+  void compute(const model_t &model, data_t &data, const vector_t &q,
+               const vector_t &v) override;
+
   void compute_jacobian(const model_t &model, data_t &data,
                         const vector_t &q) override;
 

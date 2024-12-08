@@ -2,6 +2,7 @@
 #pragma once
 
 #include "osc/tasks/base.hpp"
+#include "osc/trajectory_reference.hpp"
 
 namespace osc {
 
@@ -48,7 +49,7 @@ class MotionTask : public TaskBase, public HolonomicConstraint {
    *
    * @param Kp
    */
-  void Kp(Eigen::Ref<vector_t> Kp) {
+  void Kp(const vector_t &Kp) {
     assert(Kp.size() == dim() && "Incorrect Kp size");
     Kp_ = Kp;
   }
@@ -58,7 +59,7 @@ class MotionTask : public TaskBase, public HolonomicConstraint {
    *
    * @param Kd
    */
-  void Kd(Eigen::Ref<vector_t> Kd) {
+  void Kd(const vector_t &Kd) {
     assert(Kd.size() == dim() && "Incorrect Kd size");
     Kd_ = Kd;
   }
@@ -91,13 +92,6 @@ class MotionTask : public TaskBase, public HolonomicConstraint {
   index_t reference_frame_id_;
 };
 
-std::ostream &operator<<(std::ostream &os, MotionTask const &m) {
-  return os << "Task: " << m.name() << '\n'
-            << "reference frame : " << m.reference_frame() << '\n'
-            << "e : " << m.get_error().transpose() << '\n'
-            << "e_dot : " << m.get_error_dot().transpose() << '\n'
-            << "Kp : " << m.Kp().transpose() << '\n'
-            << "Kd : " << m.Kd().transpose() << '\n';
-}
-
 }  // namespace osc
+
+std::ostream &operator<<(std::ostream &os, osc::MotionTask const &m);

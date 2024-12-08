@@ -22,7 +22,7 @@ class HolonomicConstraint {
   virtual index_t dim() const = 0;
 
   const matrix_t &jacobian() const { return jacobian_; }
-  const matrix_t &jacobian_dot_q_dot() const { return jacobian_dot_q_dot_; }
+  const vector_t &jacobian_dot_q_dot() const { return jacobian_dot_q_dot_; }
 
   /**
    * @brief Numerical evaluation of a task Jacobian

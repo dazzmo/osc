@@ -1,18 +1,20 @@
+#include "osc/default_formulation.hpp"
+
 #include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
-
-#include "osc/osc.hpp"
 
 namespace osc {
 
 DefaultFormulation::DefaultFormulation(const model_t &model, const index_t &nq,
                                        const index_t &nv, const index_t &nu)
-    : model(model),
-      na_(nv),
+    : na_(nv),
       nu_(nu),
       nk_(0),
       nv_(nv + nu),
+      model(model),
+      actuation_bounds_(nullptr),
+      acceleration_bounds_(nullptr),
       dynamics_provided_(false) {}
 
 void DefaultFormulation::compute(const double &t, const vector_t &q,
@@ -33,8 +35,9 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
       double n_max_new = info.f_max * (info.tf - t) / (info.tf - info.t0);
       info.contact->set_max_normal_force(n_max_new);
     } else {
-      // Remove contact from the contact vector
+      // Remove contact from the contact vector and variables
       nk_ -= info.contact->dim();
+      nv_ -= info.contact->dim();
       ncin_ -= 4;
       // Remove from the vector
       for (auto it = contacts_.begin(); it != contacts_.end(); it++) {
@@ -53,21 +56,18 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
     idx += contact.contact->dim();
   }
 
-  int i_eq = 0;
-  int i_in = 0;
-
   // Motion tasks
   for (auto &info : motion_tasks_) {
-    task->compute(model, data, q, v);
+    info.task->compute(model, data, q, v);
   }
 
   // Contact
   for (auto &info : contacts_) {
-    contact->compute(model, data, q, v);
+    info.contact->compute(model, data, q, v);
   }
 
   // Dynamics constraints
-  dynamics_->compute(t, q, v);
+  dynamics_->compute(model, data, q, v);
 }
 
 void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
@@ -122,40 +122,54 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
                                                contact->dim()) = constraint.A();
     qp_data.bin.middleRows(i_in, 4) = constraint.b();
 
-    // Update bounds
+    // Update bounds for normal force
     qp_data.x_lb[na_ + nu_ + (idx + 2)] = contact->get_min_normal_force();
     qp_data.x_ub[na_ + nu_ + (idx + 2)] = contact->get_max_normal_force();
   }
 
   // Dynamics constraints
   const matrix_t &M = dynamics_->get_inertial_matrix();
+  const matrix_t &Minv = dynamics_->get_inertial_matrix_inverse();
   const matrix_t &h = dynamics_->get_nonlinear_terms();
   const matrix_t &B = dynamics_->get_actuation_map();
 
-  const matrix_t &Jc = dynamics_->get_holonomic_constraint_jacobian();
-  const vector_t &dJcdq =
-      dynamics_->get_holonomic_constraint_jacobian_dot_q_dot();
+  if (dynamics_->dim_constraints() > 0) {
+    const matrix_t &Jc = dynamics_->get_holonomic_constraint_jacobian();
+    const vector_t &dJcdq =
+        dynamics_->get_holonomic_constraint_jacobian_dot_q_dot();
+    // Set constraint-projected dynamics
+    matrix_t N = matrix_t::Identity(na_, na_);
+    matrix_t Lambda = (Jc * Minv * Jc.transpose())
+                          .completeOrthogonalDecomposition()
+                          .pseudoInverse();
+    N -= Jc.transpose() * Lambda * Jc * Minv;
 
-  // Compute projector matrix for holonomic constraints
-  matrix_t N = matrix_t::Identity(na_, na_);
-  // matrix_t V = Jc.transpose() * M.ldlt().solve(Jc);
-  // matrix_t A = V.ldlt()
-  vector_t gamma;
-
-  // Set constraint-projected dynamics
-
-  // Inertial matrix
-  qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
-  // Contact jacobians
-  for (auto &contact : contacts_) {
-    qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_ + nu_ + contact.index,
-                                                 contact.contact->dim()) =
-        -N * contact.contact->jacobian().transpose();
+    // Inertial matrix
+    qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
+    // Contact jacobians
+    for (auto &contact : contacts_) {
+      qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_ + nu_ + contact.index,
+                                                   contact.contact->dim()) =
+          -N * contact.contact->jacobian().transpose();
+    }
+    // Actuation matrix
+    qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = -N * B;
+    // Bias vector
+    qp_data.beq.middleRows(i_eq, na_) = -N * h + Jc * Lambda * dJcdq;
+  } else {
+    // Inertial matrix
+    qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
+    // Contact jacobians
+    for (auto &contact : contacts_) {
+      qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_ + nu_ + contact.index,
+                                                   contact.contact->dim()) =
+          -contact.contact->jacobian().transpose();
+    }
+    // Actuation matrix
+    qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = -B;
+    // Bias vector
+    qp_data.beq.middleRows(i_eq, na_) = -h;
   }
-  // Actuation matrix
-  qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = N * B;
-  // Bias vector
-  qp_data.beq.middleRows(i_eq, na_) = -N * h + gamma;
 
   // Bounds
   if (acceleration_bounds_) {

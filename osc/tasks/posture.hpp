@@ -37,8 +37,6 @@ class PostureTask : public MotionTask {
       // jacobian_(i, idx) = 1.0;
       // model.joints(model.names[joint_id]);
     }
-
-    return joints_without_floating_base;
   }
 
   void compute_jacobian_dot_q_dot(const model_t &model, data_t &data,

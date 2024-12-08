@@ -2,9 +2,11 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
-#include "osc/task/frame.hpp"
+#include "osc/tasks/frame.hpp"
 
 TEST(Task, CreateFrameTask) {
   // Load a model
@@ -25,11 +27,23 @@ TEST(Task, Frame) {
                   v = Eigen::VectorXd(model.nv);
   q[6] = 1.0;
   pinocchio::framesForwardKinematics(model, data, q);
+  pinocchio::computeJointJacobians(model, data, q);
 
   auto task = osc::FrameTask::create(model, "LeftFootFront");
 
+  task->Kp(osc::vector_t::Constant(6, 1e2));
+  task->Kd(osc::vector_t::Constant(6, 1e-1));
+
+  task->name("My Task");
+
+  std::cout << *task;
+
   // Compute Jacobian
   task->compute(model, data, q, v);
+
+  std::cout << task->get_error();
+  std::cout << task->get_error_dot();
+  std::cout << task->get_desired_acceleration();
 }
 
 int main(int argc, char** argv) {
@@ -44,6 +58,5 @@ int main(int argc, char** argv) {
 
   int status = RUN_ALL_TESTS();
 
-  bopt::profiler summary;
   return status;
 }

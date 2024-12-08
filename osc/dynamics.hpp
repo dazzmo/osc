@@ -20,29 +20,36 @@ class InverseDynamics {
 
   virtual void compute_inertial_matrix(const model_t &model, data_t &data,
                                        const vector_t &q, const vector_t &v);
+
+  virtual void compute_inertial_matrix_inverse(const model_t &model,
+                                               data_t &data, const vector_t &q,
+                                               const vector_t &v);
+                                               
   virtual void compute_nonlinear_effects(const model_t &model, data_t &data,
                                          const vector_t &q, const vector_t &v);
   virtual void compute_actuation_map(const model_t &model, data_t &data,
                                      const vector_t &q, const vector_t &v) = 0;
 
-  virtual void compute_holonomic_constraint_projector_matrix(
+  virtual void compute_holonomic_constraint_jacobian(const model_t &model,
+                                                     data_t &data,
+                                                     const vector_t &q,
+                                                     const vector_t &v) {}
+
+  virtual void compute_holonomic_constraint_jacobian_dot_q_dot(
       const model_t &model, data_t &data, const vector_t &q,
       const vector_t &v) {}
 
-  virtual void compute_holonomic_constraint_bias_vector(const model_t &model,
-                                                        data_t &data,
-                                                        const vector_t &q,
-                                                        const vector_t &v) {}
-
   const matrix_t &get_inertial_matrix() const;
+  const matrix_t &get_inertial_matrix_inverse() const;
   const vector_t &get_nonlinear_terms() const;
   const matrix_t &get_actuation_map() const;
 
-  virtual void get_holonomic_constraint_jacobian() const;
-  virtual void get_holonomic_constraint_jacobian_dot_q_dot() const;
+  const matrix_t &get_holonomic_constraint_jacobian() const;
+  const vector_t &get_holonomic_constraint_jacobian_dot_q_dot() const;
 
  private:
   matrix_t M_;
+  matrix_t Minv_;
   vector_t h_;
   matrix_t B_;
 
