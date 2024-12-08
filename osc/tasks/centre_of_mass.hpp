@@ -8,7 +8,18 @@ class CentreOfMassTask : public MotionTask {
  public:
   CentreOfMassTask(const model_t &model,
                    const std::string &reference_frame = "universe")
-      : MotionTask(model, reference_frame) {}
+      : MotionTask(model, reference_frame) {
+    // Error
+    e_ = vector_t::Zero(dim());
+    e_dot_ = vector_t::Zero(dim());
+
+    // Default gains
+    Kp_ = vector_t::Ones(dim());
+    Kd_ = vector_t::Ones(dim());
+
+    // Desired task acceleration
+    xacc_des_ = vector_t::Zero(dim());
+  }
 
   index_t dim() const override { return 3; }
 

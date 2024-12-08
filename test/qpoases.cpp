@@ -1,4 +1,6 @@
 
+#include "osc/solvers/qpoases.hpp"
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
@@ -62,6 +64,13 @@ TEST(DefaultFormulation, AddContact) {
                                  program.n_in_constraints());
 
   program.set_qp_data(data);
+
+  // Create QPOASES solver
+  osc::qpOASESSolver qp_solver(program.n_variables(),
+                               program.n_eq_constraints(),
+                               program.n_in_constraints());
+  
+  qp_solver.solve(data, false);
 }
 
 int main(int argc, char **argv) {

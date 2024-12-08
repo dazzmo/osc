@@ -13,14 +13,12 @@
 #include "osc/common.hpp"
 #include "osc/contacts/contact.hpp"
 #include "osc/dynamics.hpp"
+#include "osc/qp_data.hpp"
 #include "osc/tasks/acceleration.hpp"
 #include "osc/tasks/actuation.hpp"
 #include "osc/tasks/motion.hpp"
-#include "osc/qp_data.hpp"
 
 namespace osc {
-
-
 
 /**
  * @brief Default Operational Space Controller
@@ -44,6 +42,7 @@ class DefaultFormulation {
    */
   void add_motion_task(const std::shared_ptr<MotionTask> &task,
                        const index_t &priority, const double &weighting = 1.0) {
+    if (priority == 0) nceq_ += task->dim();
     motion_tasks_.push_back(TaskInfo<MotionTask>(task, priority, weighting));
   }
 
@@ -75,6 +74,7 @@ class DefaultFormulation {
   void add_actuation_task(const std::shared_ptr<ActuationTask> &task,
                           const index_t &priority,
                           const double &weighting = 1.0) {
+    if (priority == 0) nceq_ += task->dim();
     actuation_tasks_.push_back(
         TaskInfo<ActuationTask>(task, priority, weighting));
   }
@@ -103,10 +103,12 @@ class DefaultFormulation {
 
   void add_contact(const std::shared_ptr<AbstractFrictionContact> &contact,
                    const index_t &priority, const double &weighting = 1.0) {
+    if (priority == 0) nceq_ += contact->dim();
     // todo - check that contact isn't currently being removed
     ContactInfo info;
     nk_ += contact->dim();
     nv_ += contact->dim();
+    ncin_ += 4;
   }
 
   /**
@@ -149,6 +151,7 @@ class DefaultFormulation {
   void add_dynamics(const std::shared_ptr<InverseDynamics> &dynamics) {
     dynamics_provided_ = true;
     dynamics_ = dynamics;
+    nceq_ += dynamics->nv();
   }
 
  protected:

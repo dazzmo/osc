@@ -15,6 +15,10 @@ class InverseDynamics {
    */
   virtual index_t dim_constraints() = 0;
 
+  const index_t &nq() const { return nq_; }
+  const index_t &nv() const { return nv_; }
+  const index_t &nu() const { return nu_; }
+
   void compute(const model_t &model, data_t &data, const vector_t &q,
                const vector_t &v);
 
@@ -24,7 +28,7 @@ class InverseDynamics {
   virtual void compute_inertial_matrix_inverse(const model_t &model,
                                                data_t &data, const vector_t &q,
                                                const vector_t &v);
-                                               
+
   virtual void compute_nonlinear_effects(const model_t &model, data_t &data,
                                          const vector_t &q, const vector_t &v);
   virtual void compute_actuation_map(const model_t &model, data_t &data,
@@ -47,7 +51,7 @@ class InverseDynamics {
   const matrix_t &get_holonomic_constraint_jacobian() const;
   const vector_t &get_holonomic_constraint_jacobian_dot_q_dot() const;
 
- private:
+ protected:
   matrix_t M_;
   matrix_t Minv_;
   vector_t h_;
@@ -57,6 +61,11 @@ class InverseDynamics {
   matrix_t jacobian_h_;
   // Bias vector for any holonomic constraints
   vector_t jacobian_dot_q_dot_h_;
+
+ private:
+  index_t nq_;
+  index_t nv_;
+  index_t nu_;
 };
 
 }  // namespace osc

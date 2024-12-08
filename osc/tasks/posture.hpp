@@ -13,9 +13,17 @@ class PostureTask : public MotionTask {
   PostureTask(const model_t &model) : MotionTask(model) {
     // Number of joints
     index_t nj;
-    // Default gain vectors
-    Kp(vector_t::Ones(nj));
-    Kd(vector_t::Ones(nj));
+
+    // Error
+    e_ = vector_t::Zero(dim());
+    e_dot_ = vector_t::Zero(dim());
+
+    // Default gains
+    Kp_ = vector_t::Ones(dim());
+    Kd_ = vector_t::Ones(dim());
+
+    // Desired task acceleration
+    xacc_des_ = vector_t::Zero(dim());
   }
 
   void set_reference(const TrajectoryReference &ref) override {

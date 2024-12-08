@@ -84,9 +84,6 @@ class MotionTask : public TaskBase, public HolonomicConstraint {
   vector_t Kp_;
   vector_t Kd_;
 
-  matrix_t jacobian_;
-  vector_t jacobian_dot_q_dot_;
-
  private:
   string_t reference_frame_;
   index_t reference_frame_id_;

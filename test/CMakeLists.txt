@@ -8,10 +8,9 @@ enable_testing()
 
 # Create list of files
 SET(TEST_FILES
-contact.cpp
-dynamics.cpp
 osc.cpp
 task.cpp
+qpoases.cpp
 )
 
 include(GoogleTest)

@@ -44,6 +44,23 @@ TEST(Task, Frame) {
   std::cout << task->get_error();
   std::cout << task->get_error_dot();
   std::cout << task->get_desired_acceleration();
+
+  task = osc::FrameTask::create(model, "pelvis",
+                                osc::FrameTask::Type::Orientation);
+
+  task->Kp(osc::vector_t::Constant(task->dim(), 1e2));
+  task->Kd(osc::vector_t::Constant(task->dim(), 1e-1));
+
+  task->name("pelvis_orientation");
+
+  std::cout << *task;
+
+  // Compute Jacobian
+  task->compute(model, data, q, v);
+
+  std::cout << task->get_error();
+  std::cout << task->get_error_dot();
+  std::cout << task->get_desired_acceleration();
 }
 
 int main(int argc, char** argv) {

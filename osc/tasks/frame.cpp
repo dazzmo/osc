@@ -11,23 +11,24 @@ FrameTask::FrameTask(const model_t &model, const std::string &frame,
     : MotionTask(model, reference_frame), type(type), frame_(frame) {
   // Ensure the model has the provided frames
   frame_id_ = model.getFrameId(frame_);
+  
   if (frame_id_ == model.frames.size()) {
     assert("Model does not have specified frame");
   }
-  // Initialise full jacobian for computations
-  jacobian_full_ = pinocchio::Data::Matrix6x::Zero(6, model.nv);
+
+  // Error
+  e_ = vector_t::Zero(dim());
+  e_dot_ = vector_t::Zero(dim());
 
   // Default gains
-  if (type == Type::Position) {
-    Kp_ = vector_t::Ones(3);
-    Kd_ = vector_t::Ones(3);
-  } else if (type == Type::Orientation) {
-    Kp_ = vector_t::Ones(3);
-    Kd_ = vector_t::Ones(3);
-  } else if (type == Type::Full) {
-    Kp_ = vector_t::Ones(6);
-    Kd_ = vector_t::Ones(6);
-  }
+  Kp_ = vector_t::Ones(dim());
+  Kd_ = vector_t::Ones(dim());
+
+  // Desired task acceleration
+  xacc_des_ = vector_t::Zero(dim());
+
+  // Initialise full jacobian for computations
+  jacobian_full_ = pinocchio::Data::Matrix6x::Zero(6, model.nv);
 }
 
 std::shared_ptr<FrameTask> FrameTask::create(

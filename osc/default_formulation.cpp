@@ -12,6 +12,8 @@ DefaultFormulation::DefaultFormulation(const model_t &model, const index_t &nq,
       nu_(nu),
       nk_(0),
       nv_(nv + nu),
+      ncin_(0),
+      nceq_(0),
       model(model),
       actuation_bounds_(nullptr),
       acceleration_bounds_(nullptr),
@@ -24,6 +26,7 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
   data_t data(model);
   // Update pinocchio model for computations
   pinocchio::forwardKinematics(model, data, q, v);
+  pinocchio::computeJointJacobians(model, data, q);
   pinocchio::centerOfMass(model, data, q, v);
   pinocchio::updateFramePlacements(model, data);
 
@@ -39,6 +42,7 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
       nk_ -= info.contact->dim();
       nv_ -= info.contact->dim();
       ncin_ -= 4;
+      nceq_ -= 4;
       // Remove from the vector
       for (auto it = contacts_.begin(); it != contacts_.end(); it++) {
         if (it->contact->name() == info.contact->name()) {
@@ -81,16 +85,17 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     auto &task = info.task;
 
     const matrix_t &J = task->jacobian();
-    const matrix_t &dJdq = task->jacobian_dot_q_dot();
-    const matrix_t &xacc_d = task->get_desired_acceleration();
+    const vector_t &dJdq = task->jacobian_dot_q_dot();
+    const vector_t &xacc_d = task->get_desired_acceleration();
 
     if (priority == 0) {
       // J \ddot q + \dot J \dot q = \ddot x_d
-      qp_data.Aeq.middleRows(i_eq, na_) = J;
+      qp_data.Aeq.middleRows(i_eq, task->dim()) = J;
       qp_data.beq.middleRows(i_eq, task->dim()) = dJdq - xacc_d;
+      i_eq += task->dim();
     } else {
       // || J \ddot q + \dot J \dot q - \ddot x_d ||^2
-      qp_data.H.topRightCorner(na_, na_) += w * J.transpose() * J;
+      qp_data.H.topLeftCorner(na_, na_) += w * J.transpose() * J;
       qp_data.g.topRows(na_) += 2.0 * w * (J.transpose() * (dJdq - xacc_d));
     }
   }
@@ -121,6 +126,8 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     qp_data.Ain.middleRows(i_in, 4).middleCols(na_ + nu_ + idx,
                                                contact->dim()) = constraint.A();
     qp_data.bin.middleRows(i_in, 4) = constraint.b();
+
+    i_in += 4;
 
     // Update bounds for normal force
     qp_data.x_lb[na_ + nu_ + (idx + 2)] = contact->get_min_normal_force();
@@ -156,6 +163,9 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = -N * B;
     // Bias vector
     qp_data.beq.middleRows(i_eq, na_) = -N * h + Jc * Lambda * dJcdq;
+
+    i_eq += na_;
+
   } else {
     // Inertial matrix
     qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
@@ -169,6 +179,8 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = -B;
     // Bias vector
     qp_data.beq.middleRows(i_eq, na_) = -h;
+
+    i_eq += na_;
   }
 
   // Bounds

@@ -1,19 +1,20 @@
 #include "osc/dynamics.hpp"
 
-#include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/algorithm/aba.hpp>
+#include <pinocchio/algorithm/crba.hpp>
 
 namespace osc {
 
 InverseDynamics::InverseDynamics(const index_t &nq, const index_t &nv,
-                                 const index_t &nu) {
+                                 const index_t &nu)
+    : nq_(nq), nv_(nv), nu_(nu) {
   M_ = matrix_t::Zero(nv, nv);
   Minv_ = matrix_t::Zero(nv, nv);
   h_ = vector_t::Zero(nv);
   B_ = matrix_t::Zero(nv, nu);
 
-  jacobian_h_ = matrix_t::Zero(0, 0);
-  jacobian_dot_q_dot_h_ = vector_t::Zero(0, 0);
+  // jacobian_h_ = matrix_t::Zero(0, 0);
+  // jacobian_dot_q_dot_h_ = vector_t::Zero(0, 0);
 }
 
 void InverseDynamics::compute(const model_t &model, data_t &data,
@@ -36,8 +37,9 @@ void InverseDynamics::compute_inertial_matrix(const model_t &model,
 }
 
 void InverseDynamics::compute_inertial_matrix_inverse(const model_t &model,
-                                              data_t &data, const vector_t &q,
-                                              const vector_t &v) {
+                                                      data_t &data,
+                                                      const vector_t &q,
+                                                      const vector_t &v) {
   Minv_ = pinocchio::computeMinverse(model, data, q);
 }
 
@@ -48,7 +50,9 @@ void InverseDynamics::compute_nonlinear_effects(const model_t &model,
 }
 
 const matrix_t &InverseDynamics::get_inertial_matrix() const { return M_; }
-const matrix_t &InverseDynamics::get_inertial_matrix_inverse() const { return Minv_; }
+const matrix_t &InverseDynamics::get_inertial_matrix_inverse() const {
+  return Minv_;
+}
 const vector_t &InverseDynamics::get_nonlinear_terms() const { return h_; }
 const matrix_t &InverseDynamics::get_actuation_map() const { return B_; }
 

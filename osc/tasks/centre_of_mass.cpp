@@ -7,9 +7,7 @@ namespace osc {
 void CentreOfMassTask::compute_jacobian(const model_t &model, data_t &data,
                                         const vector_t &q) {
   jacobian_ = pinocchio::jacobianCenterOfMass(model, data);
-  // Default gain vectors
-  Kp(vector_t::Ones(3));
-  Kd(vector_t::Ones(3));
+
 }
 
 void CentreOfMassTask::compute_jacobian_dot_q_dot(const model_t &model,
