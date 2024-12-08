@@ -98,14 +98,19 @@ class DefaultFormulation {
     return found;
   }
 
-  // void add_bounds(const std::shared_ptr<AccelerationBounds> &bounds);
-  // void add_bounds(const std::shared_ptr<ActuationBounds> &bounds);
+  void add_bounds(const std::shared_ptr<AccelerationBounds> &bounds) {
+    acceleration_bounds_ = bounds;
+  }
+
+  void add_bounds(const std::shared_ptr<ActuationBounds> &bounds) {
+    actuation_bounds_ = bounds;
+  }
 
   void add_contact(const std::shared_ptr<AbstractFrictionContact> &contact,
                    const index_t &priority, const double &weighting = 1.0) {
     if (priority == 0) nceq_ += contact->dim();
     // todo - check that contact isn't currently being removed
-    ContactInfo info;
+    contacts_.push_back(ContactInfo(contact, priority, weighting, nk_));
     nk_ += contact->dim();
     nv_ += contact->dim();
     ncin_ += 4;
@@ -146,6 +151,32 @@ class DefaultFormulation {
    */
   void compute(const double &t, const vector_t &q, const vector_t &v);
 
+  /**
+   * @brief Returns the actuation inputs associated with the program
+   * from the solution vector `sol`.
+   *
+   * @param sol
+   */
+  vector_t get_actuation(const vector_t &sol) {
+    return sol.middleRows(na_, nu_);
+  }
+
+  /**
+   * @brief Returns the generalised accelerations  associated with the program
+   * from the solution vector `sol`.
+   *
+   * @param sol
+   */
+  vector_t get_acceleration(const vector_t &sol) { return sol.topRows(na_); }
+
+  /**
+   * @brief Updates all contact forces associated with the program from the
+   * solution vector `sol`.
+   *
+   * @param sol
+   */
+  void update_contact_forces(const vector_t &sol) {}
+
   void set_qp_data(QuadraticProgramData &qp_data);
 
   void add_dynamics(const std::shared_ptr<InverseDynamics> &dynamics) {
@@ -183,6 +214,14 @@ class DefaultFormulation {
   };
 
   struct ContactInfo {
+    ContactInfo(const std::shared_ptr<AbstractFrictionContact> &contact,
+                const index_t &priority, const double &weighting,
+                const index_t &index) {
+      this->contact = contact;
+      this->priority = priority;
+      this->weighting = weighting;
+      this->index = index;
+    }
     std::shared_ptr<AbstractFrictionContact> contact;
     // Contact Priority
     index_t priority = 0;

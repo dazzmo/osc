@@ -37,6 +37,8 @@ class FrameTask : public MotionTask {
     reference_.set(ref);
   }
 
+  void set_reference(const SE3TrajectoryReference &ref) { reference_ = ref; }
+
   void compute(const model_t &model, data_t &data, const vector_t &q,
                const vector_t &v) override;
 

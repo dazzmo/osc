@@ -31,8 +31,8 @@ struct QuadraticProgramData {
     beq = vector_t::Zero(neq);
     bin = vector_t::Zero(nin);
 
-    x_lb = vector_t::Zero(nx);
-    x_ub = vector_t::Zero(nx);
+    x_lb = vector_t::Constant(nx,-std::numeric_limits<double>::max());
+    x_ub = vector_t::Constant(nx, std::numeric_limits<double>::max());
   }
 
   // QP Hessian matrix

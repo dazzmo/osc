@@ -37,7 +37,7 @@ class ActuationTask : public TaskBase {
 class MinimiseActuationTask : public ActuationTask {
  public:
   MinimiseActuationTask(const model_t &model, const index_t &nu)
-      : ActuationTask(model) {
+      : ActuationTask(model), nu_(nu) {
     jacobian_ = matrix_t::Identity(nu_, nu_);
   }
 

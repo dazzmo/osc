@@ -11,7 +11,7 @@ FrameTask::FrameTask(const model_t &model, const std::string &frame,
     : MotionTask(model, reference_frame), type(type), frame_(frame) {
   // Ensure the model has the provided frames
   frame_id_ = model.getFrameId(frame_);
-  
+
   if (frame_id_ == model.frames.size()) {
     assert("Model does not have specified frame");
   }
@@ -82,6 +82,7 @@ void FrameTask::compute_error(const model_t &model, data_t &data,
   // Compute the rate of change of frame
   auto tMf = oMt.actInv(oMf);
 
+  // todo - transform to reference frame
   twist_t dvel =
       pinocchio::getFrameVelocity(model, data, frame_id()) -
       pinocchio::getFrameVelocity(model, data, reference_frame_id()) -

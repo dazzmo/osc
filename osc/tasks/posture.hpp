@@ -10,21 +10,9 @@ namespace osc {
  */
 class PostureTask : public MotionTask {
  public:
-  PostureTask(const model_t &model) : MotionTask(model) {
-    // Number of joints
-    index_t nj;
+  PostureTask(const model_t &model);
 
-    // Error
-    e_ = vector_t::Zero(dim());
-    e_dot_ = vector_t::Zero(dim());
-
-    // Default gains
-    Kp_ = vector_t::Ones(dim());
-    Kd_ = vector_t::Ones(dim());
-
-    // Desired task acceleration
-    xacc_des_ = vector_t::Zero(dim());
-  }
+  index_t dim() const override { return nj_; }
 
   void set_reference(const TrajectoryReference &ref) override {
     reference_ = ref;
@@ -35,29 +23,26 @@ class PostureTask : public MotionTask {
 
   void compute_jacobian(const model_t &model, data_t &data,
                         const vector_t &q) override {
-    // Iterate through all joints in the model
-    for (size_t joint_id = 0; joint_id < model.joints.size(); ++joint_id) {
-      // Check if the joint is a floating base
-      if (model.joints[joint_id].shortname() == "JointModelFreeFlyer") {
-        continue;  // Skip the floating base joint
-      }
-      // Add the joint name to the list
-      // jacobian_(i, idx) = 1.0;
-      // model.joints(model.names[joint_id]);
-    }
+    // Joint jacobian is constant
   }
 
   void compute_jacobian_dot_q_dot(const model_t &model, data_t &data,
                                   const vector_t &q,
                                   const vector_t &v) override {
-    jacobian_dot_q_dot_.setZero();
+    // dJdq is constant and zero
   }
 
   void compute_error(const model_t &model, data_t &data, const vector_t &q,
-                     const vector_t &v) override {}
+                     const vector_t &v) override {
+    e_ = q(q_indices_) - reference_.position;
+    e_dot_ = v(v_indices_) - reference_.velocity;
+  }
 
  private:
   TrajectoryReference reference_;
+  index_t nj_;
+  std::vector<int> q_indices_;
+  std::vector<int> v_indices_;
 };
 
 }  // namespace osc

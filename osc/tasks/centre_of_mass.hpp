@@ -7,21 +7,13 @@ namespace osc {
 class CentreOfMassTask : public MotionTask {
  public:
   CentreOfMassTask(const model_t &model,
-                   const std::string &reference_frame = "universe")
-      : MotionTask(model, reference_frame) {
-    // Error
-    e_ = vector_t::Zero(dim());
-    e_dot_ = vector_t::Zero(dim());
-
-    // Default gains
-    Kp_ = vector_t::Ones(dim());
-    Kd_ = vector_t::Ones(dim());
-
-    // Desired task acceleration
-    xacc_des_ = vector_t::Zero(dim());
-  }
+                   const std::string &reference_frame = "universe");
 
   index_t dim() const override { return 3; }
+
+  void set_reference(const TrajectoryReference &ref) override {
+    reference_ = ref;
+  }
 
   void compute(const model_t &model, data_t &data, const vector_t &q,
                const vector_t &v) override;
@@ -37,6 +29,8 @@ class CentreOfMassTask : public MotionTask {
                      const vector_t &v) override;
 
  private:
+  TrajectoryReference reference_;
+  matrix_t jacobian_full_;
 };
 
 }  // namespace osc

@@ -48,6 +48,8 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
         if (it->contact->name() == info.contact->name()) {
           // Remove this entry and update all indices
           contacts_.erase(it);
+          // todo - also remove release manager
+          // contact_releases_.erase();
         }
       }
     }
@@ -78,6 +80,8 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
   int i_eq = 0;
   int i_in = 0;
 
+  // Motion tasks
+  VLOG(10) << "Tasks";
   for (auto &info : motion_tasks_) {
     // If priority is 0, make it a constraint
     const index_t &priority = info.priority;
@@ -100,6 +104,21 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     }
   }
 
+  VLOG(10) << "Actuation";
+  // Actuation tasks
+  for (auto &info : actuation_tasks_) {
+    // If priority is 0, make it a constraint
+    const index_t &priority = info.priority;
+    const double &w = info.weighting;
+    auto &task = info.task;
+
+    const matrix_t &J = task->jacobian();
+
+    // || J \ddot q + \dot J \dot q - \ddot x_d ||^2
+    qp_data.H.block(na_, na_, nu_, nu_) += w * J.transpose() * J;
+  }
+
+  VLOG(10) << "Contacts";
   // Contacts
   for (auto &info : contacts_) {
     const index_t &priority = info.priority;
@@ -111,7 +130,7 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
 
     if (priority == 0) {
       // J \ddot q + \dot J \dot q = 0
-      qp_data.Aeq.middleRows(i_eq, na_) = J;
+      qp_data.Aeq.middleRows(i_eq, contact->dim()).leftCols(na_) = J;
       qp_data.beq.middleRows(i_eq, contact->dim()) = dJdq;
       i_eq += contact->dim();
     } else {
@@ -128,12 +147,12 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     qp_data.bin.middleRows(i_in, 4) = constraint.b();
 
     i_in += 4;
-
     // Update bounds for normal force
     qp_data.x_lb[na_ + nu_ + (idx + 2)] = contact->get_min_normal_force();
     qp_data.x_ub[na_ + nu_ + (idx + 2)] = contact->get_max_normal_force();
   }
 
+  VLOG(10) << "Dynamics";
   // Dynamics constraints
   const matrix_t &M = dynamics_->get_inertial_matrix();
   const matrix_t &Minv = dynamics_->get_inertial_matrix_inverse();
@@ -167,10 +186,14 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     i_eq += na_;
 
   } else {
+    VLOG(10) << "Inertia";
     // Inertial matrix
     qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
     // Contact jacobians
+    VLOG(10) << "Contact";
     for (auto &contact : contacts_) {
+      VLOG(10) << "Adding " << contact.contact->name();
+      VLOG(10) << "Index " << contact.index;
       qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_ + nu_ + contact.index,
                                                    contact.contact->dim()) =
           -contact.contact->jacobian().transpose();
@@ -183,6 +206,7 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     i_eq += na_;
   }
 
+  VLOG(10) << "Bounds";
   // Bounds
   if (acceleration_bounds_) {
     qp_data.x_lb.topRows(na_) = acceleration_bounds_->lower_bound();
