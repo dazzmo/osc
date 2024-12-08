@@ -1,29 +1,31 @@
 find_package(Eigen3 3.3 REQUIRED)
 find_package(pinocchio REQUIRED)
-find_package(casadi REQUIRED)
-find_package(bopt REQUIRED)
 find_package(glog REQUIRED)
 
 # Collect source files
 SET(${PROJECT_NAME}_SOURCES
-common.cpp
-cost.cpp
 dynamics.cpp
-osc.cpp
+default_formulation.cpp
 tasks/centre_of_mass.cpp
-tasks/costs.cpp
+tasks/posture.cpp
 tasks/frame.cpp
-contact/constraints.cpp
-contact/contact.cpp
+contacts/contact.cpp
 )
 
 SET(${PROJECT_NAME}_LIBRARIES
 Eigen3::Eigen
-casadi
 pinocchio::pinocchio
-bopt
 glog
 )
+
+# qpOASES
+if(WITH_QPOASES)
+  message(STATUS "Including qpOASES as numeric optimization solver")
+  find_package(qpOASES REQUIRED)
+  list(APPEND ${PROJECT_NAME}_LIBRARIES qpOASES)
+  list(APPEND ${PROJECT_NAME}_SOURCES solvers/qpoases.cpp)
+  add_compile_definitions(WITH_QPOASES)
+endif(WITH_QPOASES)
 
 include(GNUInstallDirs)
 

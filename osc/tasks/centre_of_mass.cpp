@@ -1,39 +1,41 @@
 #include "osc/tasks/centre_of_mass.hpp"
 
+#include <pinocchio/algorithm/center-of-mass.hpp>
+
 namespace osc {
 
-void CentreOfMassTask::jacobian(const model_t &model, data_t &data,
-                                const vector_t &q, matrix_t &J) const {
-  jacobian_tpl<double>(model, data, q, J);
+void CentreOfMassTask::compute_jacobian(const model_t &model, data_t &data,
+                                        const vector_t &q) {
+  jacobian_ = pinocchio::jacobianCenterOfMass(model, data);
+  // Default gain vectors
+  Kp(vector_t::Ones(3));
+  Kd(vector_t::Ones(3));
 }
 
-void CentreOfMassTask::bias_acceleration(const model_t &model, data_t &data,
-                                         const vector_t &q, const vector_t &v,
-                                         vector_t &bias) const {
-  bias_acceleration_tpl<double>(model, data, q, v, bias);
+void CentreOfMassTask::compute_jacobian_dot_q_dot(const model_t &model,
+                                                  data_t &data,
+                                                  const vector_t &q,
+                                                  const vector_t &v) {
+  jacobian_dot_q_dot_ = data.acom[0];
 }
 
-void CentreOfMassTask::jacobian(const model_sym_t &model, data_sym_t &data,
-                                const vector_sym_t &q, matrix_sym_t &J) const {
-  jacobian_tpl<sym_t>(model, data, q, J);
-}
-
-void CentreOfMassTask::bias_acceleration(const model_sym_t &model,
-                                         data_sym_t &data,
-                                         const vector_sym_t &q,
-                                         const vector_sym_t &v,
-                                         vector_sym_t &bias) const {
-  bias_acceleration_tpl<sym_t>(model, data, q, v, bias);
-}
-
-void CentreOfMassTask::evaluate_error(const model_t &model, data_t &data,
-                                      vector_t &e, vector_t &e_dot) const {
+void CentreOfMassTask::compute_error(const model_t &model, data_t &data,
+                                     const vector_t &q, const vector_t &v) {
   // Compute centre of mass with respect to reference frame
-  e = data.oMf[model.getFrameId(reference_frame)].actInv(data.com[0]) -
-      target.position;
-  // Also compute centre of mass velocity
-  e_dot = data.oMf[model.getFrameId(reference_frame)].actInv(data.vcom[0]) -
-          target.velocity;
+  // e_ = data.oMf[reference_frame_id()].actInv(data.com[0]) - target.position;
+  // // Also compute centre of mass velocity
+  // e_dot_ =
+  //     data.oMf[reference_frame_id()].actInv(data.vcom[0]) - target.velocity;
+}
+
+void CentreOfMassTask::compute(const model_t &model, data_t &data,
+                               const vector_t &q, const vector_t &v) {
+  compute_jacobian(model, data, q);
+  compute_jacobian_dot_q_dot(model, data, q, v);
+  compute_error(model, data, q, v);
+
+  // Set desired task acceleration
+  xacc_des_ = Kp_.asDiagonal() * e_ + Kd_.asDiagonal() * e_dot_;
 }
 
 }  // namespace osc

@@ -4,18 +4,25 @@
 
 namespace osc {
 
-class HolonomicExpression {
+/**
+ * @brief Expression of the form x = f(q), which can be differentiated to
+ * achieve the forms $\f \dot x = J(q) \dot q \f$ and \f$ \ddot x = J(q) \ddot q
+ * + \dot J(q) \dot q \f$
+ *
+ */
+class HolonomicConstraint {
  public:
-  HolonomicExpression() : dimension(0) {}
-  HolonomicExpression(const index_t &dimension) : dimension(dimension) {}
+  HolonomicConstraint() {}
 
   /**
-   * @brief Dimension of the holonomic expression.
+   * @brief Dimension of the task expression
    *
+   * @return index_t
    */
-  index_t dimension;
+  virtual index_t dim() const = 0;
 
-  virtual void update_parameters(const model_t &model, data_t &data) {}
+  const matrix_t &jacobian() const { return jacobian_; }
+  const matrix_t &jacobian_dot_q_dot() const { return jacobian_dot_q_dot_; }
 
   /**
    * @brief Numerical evaluation of a task Jacobian
@@ -27,8 +34,8 @@ class HolonomicExpression {
    * @note The method assumes that model and data are evaluated to a given
    * state, it does not perform any forward kinematics or dynamics.
    */
-  virtual void jacobian(const model_t &model, data_t &data, const vector_t &q,
-                        matrix_t &J) const = 0;
+  virtual void compute_jacobian(const model_t &model, data_t &data,
+                                const vector_t &q) = 0;
 
   /**
    * @brief Numerical evaluation of a task acceleration bias of the form \dot J
@@ -42,37 +49,13 @@ class HolonomicExpression {
    * @note The method assumes that model and data are evaluated to a given
    * state, it does not perform any forward kinematics or dynamics.
    */
-  virtual void bias_acceleration(const model_t &model, data_t &data,
-                                 const vector_t &q, const vector_t &v,
-                                 vector_t &bias) const = 0;
+  virtual void compute_jacobian_dot_q_dot(const model_t &model, data_t &data,
+                                          const vector_t &q,
+                                          const vector_t &q_dot) = 0;
 
-  /**
-   * \copydoc osc::AbstractTask::jacobian()
-   */
-  virtual void jacobian(const model_sym_t &model, data_sym_t &data,
-                        const vector_sym_t &q, matrix_sym_t &J) const {
-    throw std::runtime_error("symbolic jacobian() not implemented");
-  }
-
-  /**
-   * \copydoc osc::AbstractTask::bias_acceleration()
-   */
-  virtual void bias_acceleration(const model_sym_t &model, data_sym_t &data,
-                                 const vector_sym_t &q, const vector_sym_t &v,
-                                 vector_sym_t &bias) const {
-    throw std::runtime_error("symbolic bias_acceleration() not implemented");
-  }
-};
-
-class HolonomicConstraint : public HolonomicExpression {
- public:
-  HolonomicConstraint(const index_t &dimension)
-      : HolonomicExpression(dimension) {
-    lambda = bopt::create_variable_vector("lambda", dimension);
-  }
-
-  // Associated variables for constraint forces
-  std::vector<bopt::variable> lambda;
+ protected:
+  matrix_t jacobian_;
+  vector_t jacobian_dot_q_dot_;
 };
 
 }  // namespace osc

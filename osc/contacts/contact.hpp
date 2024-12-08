@@ -1,12 +1,10 @@
 #pragma once
 
-#include <bopt/ad/casadi.hpp>
-#include <bopt/constraints.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 
-#include "osc/constraint.hpp"
+#include "osc/constraint/linear.hpp"
 #include "osc/holonomic.hpp"
 
 namespace osc {
@@ -15,20 +13,40 @@ class AbstractContact : public HolonomicConstraint {
  public:
   AbstractContact(const model_t &model, const string_t &frame,
                   const index_t &dimension)
-      : HolonomicConstraint(dimension), frame(frame) {
+      : HolonomicConstraint(), frame_(frame) {
     // Ensure the frame exists on the model
-    if (model.getFrameId(frame) == model.frames.size()) {
+    frame_id_ = model.getFrameId(frame);
+    if (frame_id_ == model.frames.size()) {
       assert("Model does not have specified frame");
     }
+
+    // Create jacobian for contact
+    jacobian_full_ = matrix_t::Zero(6, model.nv);
   }
-  // Frame for the contact to occur
-  string_t frame;
 
-  enum class ContactState { CONTACT = 0, NO_CONTACT };
+  virtual void compute(const model_t &model, data_t &data, const vector_t &q,
+                       const vector_t &v) = 0;
 
-  ContactState contact;
+  const string_t &name() const { return name_; }
+  void name(const std::string &name) { name_ = name; }
+
+  const string_t &frame() const { return frame_; }
+  const index_t &frame_id() const { return frame_id_; }
+
+  /**
+   * @brief Contact force or wrench experienced at the provided contact
+   *
+   */
+  vector_t force;
+
+ protected:
+  matrix_t jacobian_full_;
 
  private:
+  string_t name_;
+  // Frame for the contact to occur
+  string_t frame_;
+  index_t frame_id_;
 };
 
 class AbstractFrictionContact : public AbstractContact {
@@ -36,83 +54,70 @@ class AbstractFrictionContact : public AbstractContact {
   AbstractFrictionContact(const model_t &model, const string_t &frame,
                           const index_t &dimension)
       : AbstractContact(model, frame, dimension) {
-    n = vector3_t::UnitZ();
-    t = vector3_t::UnitX();
-    b = vector3_t::UnitY();
-
-    mu = 1.0;
-
-    lambda_ub =
-        vector_t::Constant(dimension, std::numeric_limits<double>::infinity());
-    lambda_lb =
-        vector_t::Constant(dimension, -std::numeric_limits<double>::infinity());
+    set_friction_coefficient(1.0);
+    set_surface_normal(vector3_t::UnitZ());
+    set_min_normal_force(0.0);
+    set_max_normal_force(std::numeric_limits<double>::max());
+    friction_cone_constraint_ = std::make_unique<LinearConstraint>(
+        4, 3, LinearConstraint::Type::Inequality);
   }
 
-  // Contact surface normal vector
-  vector3_t n;
-  // Contact surface tangent vector
-  vector3_t t;
-  // Contact surface binormal vector
-  vector3_t b;
+  const vector3_t &get_surface_normal() const { return n_; }
+  void set_surface_normal(const vector3_t &n) { n_ = n; }
 
+  const double &get_friction_coefficient() const { return mu_; }
+  void set_friction_coefficient(const double &mu) { mu_ = mu; }
+
+  const double &get_max_normal_force() const { return max_normal_force_; }
+  void set_max_normal_force(const double &f) { max_normal_force_ = f; }
+
+  const double &get_min_normal_force() const { return min_normal_force_; }
+  void set_min_normal_force(const double &f) { min_normal_force_ = f; }
+
+  const LinearConstraint &friction_cone_constraint() const {
+    return *friction_cone_constraint_;
+  }
+
+ protected:
+  std::unique_ptr<LinearConstraint> friction_cone_constraint_;
+
+  // Contact surface normal vector (represented in world frame)
+  vector3_t n_;
   // Friction coefficient
-  double mu;
+  double mu_;
 
   // Friction force upper bound
-  vector_t lambda_ub;
-  // Friction force lower bound
-  vector_t lambda_lb;
+  double max_normal_force_;
+  double min_normal_force_;
 };
 
 class FrictionContact3D : public AbstractFrictionContact {
  public:
   FrictionContact3D(const model_t &model, const string_t &frame)
-      : AbstractFrictionContact(model, frame, 3) {}
-
-  void jacobian(const model_t &model, data_t &data, const vector_t &q,
-                matrix_t &J) const override {
-    jacobian_tpl<double>(model, data, q, J);
+      : AbstractFrictionContact(model, frame, 3) {
+    friction_cone_constraint_ = std::make_unique<LinearConstraint>(4, 3);
   }
 
-  void bias_acceleration(const model_t &model, data_t &data, const vector_t &q,
-                         const vector_t &v, vector_t &bias) const override {
-    bias_acceleration_tpl<double>(model, data, q, v, bias);
-  }
+  index_t dim() const override { return 3; }
 
-  void jacobian(const model_sym_t &model, data_sym_t &data,
-                const vector_sym_t &q, matrix_sym_t &J) const override {
-    jacobian_tpl<sym_t>(model, data, q, J);
-  }
+  void compute(const model_t &model, data_t &data, const vector_t &q,
+               const vector_t &v) override;
 
-  void bias_acceleration(const model_sym_t &model, data_sym_t &data,
-                         const vector_sym_t &q, const vector_sym_t &v,
-                         vector_sym_t &bias) const override {
-    bias_acceleration_tpl<sym_t>(model, data, q, v, bias);
-  }
+  void compute_jacobian(const model_t &model, data_t &data,
+                        const vector_t &q) override;
 
- private:
-  template <typename T>
-  void jacobian_tpl(const pinocchio::ModelTpl<T> &model,
-                    pinocchio::DataTpl<T> &data, const Eigen::VectorX<T> &q,
-                    Eigen::MatrixX<T> &J) const {
-    typename pinocchio::DataTpl<T>::Matrix6x Jfull =
-        pinocchio::DataTpl<T>::Matrix6x::Zero(6, model.nv);
-    pinocchio::getFrameJacobian(model, data, model.getFrameId(frame),
-                                pinocchio::WORLD, Jfull);
-    J = Jfull.topRows(3);
-  }
-
-  template <typename T>
-  void bias_acceleration_tpl(const pinocchio::ModelTpl<T> &model,
-                             pinocchio::DataTpl<T> &data,
-                             const Eigen::VectorX<T> &q,
-                             const Eigen::VectorX<T> &v,
-                             Eigen::VectorX<T> &bias) const {
-    pinocchio::MotionTpl<T> acc = pinocchio::getFrameClassicalAcceleration(
-        model, data, model.getFrameId(frame), pinocchio::WORLD);
-
-    bias = acc.linear();
-  }
+  void compute_jacobian_dot_q_dot(const model_t &model, data_t &data,
+                                  const vector_t &q,
+                                  const vector_t &v) override;
 };
+
+// std::ostream &operator<<(std::ostream &os, AbstractContact const &m) {
+//   return os << "Contact: " << m.name() << '\n'
+//             << "reference frame : " << m.reference_frame() << '\n'
+//             << "e : " << m.get_error().transpose() << '\n'
+//             << "e_dot : " << m.get_error_dot().transpose() << '\n'
+//             << "Kp : " << m.Kp().transpose() << '\n'
+//             << "Kd : " << m.Kd().transpose() << '\n';
+// }
 
 }  // namespace osc

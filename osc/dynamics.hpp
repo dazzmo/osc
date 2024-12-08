@@ -1,67 +1,55 @@
 #pragma once
-#include <pinocchio/algorithm/rnea.hpp>
 
 #include "osc/common.hpp"
-#include "osc/contact.hpp"
-#include "osc/holonomic.hpp"
 
 namespace osc {
 
-class AbstractSystemDynamics {
+class InverseDynamics {
  public:
-  AbstractSystemDynamics(const model_t &model, const index_t &nu)
-      : nu_(nu), constraints_({}) {}
-
-  const index_t &nu() const { return nu_; }
-
-  void add_constraint(const std::shared_ptr<HolonomicConstraint> &constraint) {
-    constraints_.push_back(constraint);
-  }
-
-  void add_dynamics(const std::shared_ptr<AbstractSystemDynamics> &dynamics) {
-    dynamics_.push_back(dynamics);
-  }
+  InverseDynamics(const index_t &nq, const index_t &nv, const index_t &nu);
 
   /**
-   * @brief Method to evaluate the system dynamics \dot x = f(x u), expressed in
-   * the form \dot x - f(x, u) = 0. Typically this is used to compute the
-   * unconstrained dynamics of the system.
+   * @brief Dimension of the holonomic constraints acting on the dynamics
    *
-   * @param model
-   * @param data
-   * @param q Generalised position
-   * @param v Generalised velocity
-   * @param a Generalised acceleration
-   * @param u Control input vector
-   * @return vector_sym_t
+   * @return index_t
    */
-  virtual vector_sym_t evaluate(const model_sym_t &model, data_sym_t &data,
-                                const vector_sym_t &q, const vector_sym_t &v,
-                                const vector_sym_t &a,
-                                const vector_sym_t &u) const {
-    throw std::runtime_error("No symbolic evaluate implemented for dynamics");
-  }
+  virtual index_t dim_constraints() = 0;
 
-  std::vector<bopt::variable> get_constraint_force_vector();
+  void compute(const model_t &model, data_t &data, const vector_t &q,
+               const vector_t &v);
+
+  virtual void compute_inertial_matrix(const model_t &model, data_t &data,
+                                       const vector_t &q, const vector_t &v);
+  virtual void compute_nonlinear_effects(const model_t &model, data_t &data,
+                                         const vector_t &q, const vector_t &v);
+  virtual void compute_actuation_map(const model_t &model, data_t &data,
+                                     const vector_t &q, const vector_t &v) = 0;
+
+  virtual void compute_holonomic_constraint_projector_matrix(
+      const model_t &model, data_t &data, const vector_t &q,
+      const vector_t &v) {}
+
+  virtual void compute_holonomic_constraint_bias_vector(const model_t &model,
+                                                        data_t &data,
+                                                        const vector_t &q,
+                                                        const vector_t &v) {}
+
+  const matrix_t &get_inertial_matrix() const;
+  const vector_t &get_nonlinear_terms() const;
+  const matrix_t &get_actuation_map() const;
+
+  virtual void get_holonomic_constraint_jacobian() const;
+  virtual void get_holonomic_constraint_jacobian_dot_q_dot() const;
 
  private:
-  index_t nu_;
-  std::vector<std::shared_ptr<HolonomicConstraint>> constraints_;
-  std::vector<std::shared_ptr<AbstractSystemDynamics>> dynamics_;
-};
+  matrix_t M_;
+  vector_t h_;
+  matrix_t B_;
 
-class SystemDynamicsConstraint : public AbstractLinearConstraint {
- public:
-  SystemDynamicsConstraint(
-      const std::shared_ptr<AbstractSystemDynamics> &dynamics)
-      : dynamics_(dynamics) {}
-
-  // Return linear constraint
-  bopt::linear_constraint<double>::shared_ptr to_constraint(
-      const model_t &model) const;
-
- private:
-  std::shared_ptr<AbstractSystemDynamics> dynamics_;
+  // Projection matrix for any holonomic constraints
+  matrix_t jacobian_h_;
+  // Bias vector for any holonomic constraints
+  vector_t jacobian_dot_q_dot_h_;
 };
 
 }  // namespace osc

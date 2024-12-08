@@ -1,9 +1,7 @@
 include(CMakeFindDependencyMacro)
 
 find_dependency(pinocchio REQUIRED)
-find_dependency(casadi REQUIRED)
 find_dependency(Eigen3 REQUIRED)
-find_dependency(bopt REQUIRED)
 find_dependency(glog REQUIRED)
 
 # these are autogenerate by cmake
