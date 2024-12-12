@@ -16,6 +16,13 @@ class TaskBase {
   void name(const string_t &name) { name_ = name; }
 
   /**
+   * @brief Dimension of the task expression
+   *
+   * @return index_t
+   */
+  virtual index_t dim() const = 0;
+
+  /**
    * @brief Compute all quantities associated with the given task
    *
    * @param model

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "osc/se3.hpp"
 #include "osc/tasks/motion.hpp"
 
 namespace osc {
@@ -9,32 +10,18 @@ namespace osc {
  * @brief Task for tracking a specified frame
  *
  */
-class FrameTask : public MotionTask {
+class FrameTask : public MotionTask, public FrameSE3 {
  public:
-  enum class Type { Position = 0, Orientation, Full };
+  using Type = FrameSE3::Type;
 
   FrameTask(const model_t &model, const std::string &frame_name,
-            const Type &type = Type::Full,
-            const std::string &reference_frame = "universe");
+            const Type &type = Type::Full);
 
-  static std::shared_ptr<FrameTask> create(
-      const model_t &model, const std::string &frame_name,
-      const Type &type = Type::Full,
-      const std::string &reference_frame = "universe");
+  static std::shared_ptr<FrameTask> create(const model_t &model,
+                                           const std::string &frame_name,
+                                           const Type &type = Type::Full);
 
-  index_t dim() const override {
-    if (get_type() == Type::Position || get_type() == Type::Orientation) {
-      return 3;
-    } else {
-      return 6;
-    }
-  }
-
-  const string_t &frame() const { return frame_; }
-  const index_t &frame_id() const { return frame_id_; }
-
-  void set_type(const Type &type);
-  const Type &get_type() const { return type_; }
+  index_t dim() const override { return FrameSE3::dim(); }
 
   void set_reference(const TrajectoryReference &ref) override {
     reference_.set(ref);
@@ -58,11 +45,6 @@ class FrameTask : public MotionTask {
                      const vector_t &v) override;
 
  private:
-  string_t frame_;
-  index_t frame_id_;
-  matrix_t jacobian_full_;
-  Type type_;
-
   SE3TrajectoryReference reference_;
 };
 

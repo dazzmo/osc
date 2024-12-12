@@ -2,6 +2,24 @@
 
 namespace osc {
 
+void FrictionContact3D::compute_jacobian(const model_t &model, data_t &data,
+                                         const vector_t &q) {
+  FrameSE3::compute_jacobian(model, data, jacobian_);
+}
+
+void FrictionContact3D::compute_jacobian_dot_q_dot(const model_t &model,
+                                                   data_t &data,
+                                                   const vector_t &q,
+                                                   const vector_t &v) {
+  FrameSE3::compute_jacobian_dot_q_dot(model, data, jacobian_dot_q_dot_);
+}
+
+void FrictionContact3D::compute_error(const model_t &model, data_t &data,
+                                      const vector_t &q, const vector_t &v) {
+  FrameSE3::compute_error(model, data, get_reference().position,
+                          get_reference().velocity, e_, e_dot_);
+}
+
 void FrictionContact3D::compute(const model_t &model, data_t &data,
                                 const vector_t &q, const vector_t &v) {
   // https://scaron.info/robotics/friction-cones.html
@@ -51,8 +69,16 @@ void FrictionContact3D::compute(const model_t &model, data_t &data,
   lb.setConstant(-std::numeric_limits<double>::max());
   ub.setZero();
 
-  // Compute aspects related to the frame task
-  FrameTask::compute(model, data, q, v);
+  // Compute jacobian and derivative
+  compute_jacobian(model, data, q);
+  compute_jacobian_dot_q_dot(model, data, q, v);
+  compute_error(model, data, q, v);
+
+  // Compute desired task acceleration
+  xacc_des_ =
+      Kp_.asDiagonal() * get_error() + Kd_.asDiagonal() * get_error_dot();
+
+  xacc_des_ += get_reference().acceleration.linear();
 }
 
 }  // namespace osc

@@ -18,6 +18,8 @@ class PostureTask : public MotionTask {
     reference_ = ref;
   }
 
+  const TrajectoryReference &get_reference() const { return reference_; }
+
   void compute(const model_t &model, data_t &data, const vector_t &q,
                const vector_t &v) override;
 
@@ -33,7 +35,7 @@ class PostureTask : public MotionTask {
   }
 
   void compute_error(const model_t &model, data_t &data, const vector_t &q,
-                     const vector_t &v) override ;
+                     const vector_t &v) override;
 
  private:
   TrajectoryReference reference_;

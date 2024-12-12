@@ -18,8 +18,18 @@ class FrictionContact3D : public ContactBase {
         6, 3, LinearConstraint::Type::Inequality);
   }
 
-  virtual void compute(const model_t &model, data_t &data, const vector_t &q,
-                       const vector_t &v) override;
+  void compute(const model_t &model, data_t &data, const vector_t &q,
+               const vector_t &v) override;
+
+  void compute_jacobian(const model_t &model, data_t &data,
+                        const vector_t &q) override;
+
+  void compute_jacobian_dot_q_dot(const model_t &model, data_t &data,
+                                  const vector_t &q,
+                                  const vector_t &v) override;
+
+  void compute_error(const model_t &model, data_t &data, const vector_t &q,
+                     const vector_t &v) override;
 
  protected:
 };

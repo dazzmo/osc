@@ -12,13 +12,6 @@ class ActuationTask : public TaskBase {
  public:
   ActuationTask(const model_t &model) {}
 
-  /**
-   * @brief Dimension of the task expression
-   *
-   * @return index_t
-   */
-  virtual index_t dim() = 0;
-
   const matrix_t &jacobian() const { return jacobian_; }
 
   virtual void compute_jacobian(const model_t &model, data_t &data,
@@ -41,7 +34,7 @@ class MinimiseActuationTask : public ActuationTask {
     jacobian_ = matrix_t::Identity(nu_, nu_);
   }
 
-  index_t dim() override { return nu_; }
+  index_t dim() const override { return nu_; }
 
   void compute(const model_t &model, data_t &data, const vector_t &q,
                const vector_t &v) override {

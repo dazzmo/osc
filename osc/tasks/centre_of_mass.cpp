@@ -5,9 +5,7 @@
 
 namespace osc {
 
-CentreOfMassTask::CentreOfMassTask(const model_t &model,
-                                   const std::string &reference_frame)
-    : MotionTask(model, reference_frame) {
+CentreOfMassTask::CentreOfMassTask(const model_t &model) : MotionTask(model) {
   jacobian_full_ = matrix_t::Zero(6, model.nv);
   // Error
   e_ = vector_t::Zero(dim());
@@ -53,10 +51,11 @@ void CentreOfMassTask::compute_jacobian_dot_q_dot(const model_t &model,
 void CentreOfMassTask::compute_error(const model_t &model, data_t &data,
                                      const vector_t &q, const vector_t &v) {
   // Compute centre of mass with respect to reference frame
-  e_ = reference_.position - data.oMf[reference_frame_id()].actInv(data.com[0]);
+  e_ = get_reference().position -
+       data.oMf[reference_frame_id()].actInv(data.com[0]);
   // Also compute centre of mass velocity
-  e_dot_ =
-      reference_.velocity - data.oMf[reference_frame_id()].actInv(data.vcom[0]);
+  e_dot_ = get_reference().velocity -
+           data.oMf[reference_frame_id()].actInv(data.vcom[0]);
 }
 
 void CentreOfMassTask::compute(const model_t &model, data_t &data,
