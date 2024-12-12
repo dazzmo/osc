@@ -30,31 +30,45 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
   pinocchio::centerOfMass(model, data, q, v);
   pinocchio::updateFramePlacements(model, data);
 
+  VLOG(10) << "Check contact removals";
   // Check if any scheduled contact points are to be removed from the program,
   // if not, continue decreasing their maximum normal reaction forces.
-  for (auto &info : contact_releases_) {
-    if (t <= info.tf) {
+  for (auto info_it = contact_releases_.begin();
+       info_it != contact_releases_.end();) {
+    VLOG(10) << "name: " << info_it->contact->name();
+    bool removed = false;
+    if (t <= info_it->tf) {
+      VLOG(10) << "Scaling";
       // Linearly scale the maximum normal force to zero for the contact
-      double n_max_new = info.f_max * (info.tf - t) / (info.tf - info.t0);
-      info.contact->set_max_normal_force(n_max_new);
+      double n_max_new =
+          info_it->f_max * (info_it->tf - t) / (info_it->tf - info_it->t0);
+      info_it->contact->set_max_normal_force(n_max_new);
     } else {
+      VLOG(10) << "Removing";
       // Remove contact from the contact vector and variables
-      nk_ -= info.contact->dim();
-      nv_ -= info.contact->dim();
-      ncin_ -= 4;
-      nceq_ -= 4;
+      nk_ -= info_it->contact->dim();
+      nv_ -= info_it->contact->dim();
+      // todo - check if this is a priority 0 contact
+      // nceq_ -= info.contact->dim();
+      ncin_ -= 6;
       // Remove from the vector
-      for (auto it = contacts_.begin(); it != contacts_.end(); it++) {
-        if (it->contact->name() == info.contact->name()) {
-          // Remove this entry and update all indices
-          contacts_.erase(it);
-          // todo - also remove release manager
-          // contact_releases_.erase();
+      for (auto it = contacts_.begin(); it != contacts_.end();) {
+        if (it->contact->name() == info_it->contact->name()) {
+          it = contacts_.erase(it);
+          removed = true;
+        } else {
+          it++;
         }
       }
     }
+    if (removed) {
+      info_it = contact_releases_.erase(info_it);
+    } else {
+      info_it++;
+    }
   }
 
+  VLOG(10) << "Update indices";
   // Update contact indices
   int idx = 0;
   for (auto &contact : contacts_) {
@@ -62,16 +76,19 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
     idx += contact.contact->dim();
   }
 
+  VLOG(10) << "Motion";
   // Motion tasks
   for (auto &info : motion_tasks_) {
     info.task->compute(model, data, q, v);
   }
 
+  VLOG(10) << "Contact";
   // Contact
   for (auto &info : contacts_) {
     info.contact->compute(model, data, q, v);
   }
 
+  VLOG(10) << "Dynamics";
   // Dynamics constraints
   dynamics_->compute(model, data, q, v);
 }
@@ -80,8 +97,11 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
   int i_eq = 0;
   int i_in = 0;
 
+  qp_data.H.setZero();
+  qp_data.g.setZero();
+
   // Motion tasks
-  VLOG(10) << "Tasks";
+  VLOG(10) << "Motion Tasks";
   for (auto &info : motion_tasks_) {
     // If priority is 0, make it a constraint
     const index_t &priority = info.priority;
@@ -91,10 +111,9 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     const matrix_t &J = task->jacobian();
     const vector_t &dJdq = task->jacobian_dot_q_dot();
     const vector_t &xacc_d = task->get_desired_acceleration();
-
     if (priority == 0) {
       // J \ddot q + \dot J \dot q = \ddot x_d
-      qp_data.Aeq.middleRows(i_eq, task->dim()) = J;
+      qp_data.Aeq.middleRows(i_eq, task->dim()).leftCols(na_) = J;
       qp_data.beq.middleRows(i_eq, task->dim()) = dJdq - xacc_d;
       i_eq += task->dim();
     } else {
@@ -104,7 +123,7 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     }
   }
 
-  VLOG(10) << "Actuation";
+  VLOG(10) << "Actuation Tasks";
   // Actuation tasks
   for (auto &info : actuation_tasks_) {
     // If priority is 0, make it a constraint
@@ -114,7 +133,7 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
 
     const matrix_t &J = task->jacobian();
 
-    // || J \ddot q + \dot J \dot q - \ddot x_d ||^2
+    // || J u ||^2
     qp_data.H.block(na_, na_, nu_, nu_) += w * J.transpose() * J;
   }
 
@@ -127,29 +146,27 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
 
     const matrix_t &J = contact->jacobian();
     const matrix_t &dJdq = contact->jacobian_dot_q_dot();
+    const vector_t &xacc_d = contact->get_desired_acceleration();
 
     if (priority == 0) {
-      // J \ddot q + \dot J \dot q = 0
+      // J \ddot q + \dot J \dot q = \ddot x_d
       qp_data.Aeq.middleRows(i_eq, contact->dim()).leftCols(na_) = J;
-      qp_data.beq.middleRows(i_eq, contact->dim()) = dJdq;
+      qp_data.beq.middleRows(i_eq, contact->dim()) = dJdq - xacc_d;
       i_eq += contact->dim();
     } else {
       // || J \ddot q + \dot J \dot q - \ddot x_d ||^2
-      qp_data.H.topRightCorner(na_, na_) += J.transpose() * J;
-      qp_data.g.topRows(na_) += 2.0 * (J.transpose() * (dJdq));
+      qp_data.H.topLeftCorner(na_, na_) += w * J.transpose() * J;
+      qp_data.g.topRows(na_) += 2.0 * w * (J.transpose() * (dJdq - xacc_d));
     }
 
     // Add friction constraint
     int idx = info.index;
     auto constraint = contact->friction_cone_constraint();
-    qp_data.Ain.middleRows(i_in, 4).middleCols(na_ + nu_ + idx,
+    qp_data.Ain.middleRows(i_in, 6).middleCols(na_ + nu_ + idx,
                                                contact->dim()) = constraint.A();
-    qp_data.bin.middleRows(i_in, 4) = constraint.b();
+    qp_data.bin.middleRows(i_in, 6) = constraint.b();
 
-    i_in += 4;
-    // Update bounds for normal force
-    qp_data.x_lb[na_ + nu_ + (idx + 2)] = contact->get_min_normal_force();
-    qp_data.x_ub[na_ + nu_ + (idx + 2)] = contact->get_max_normal_force();
+    i_in += 6;
   }
 
   VLOG(10) << "Dynamics";
@@ -163,15 +180,18 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     const matrix_t &Jc = dynamics_->get_holonomic_constraint_jacobian();
     const vector_t &dJcdq =
         dynamics_->get_holonomic_constraint_jacobian_dot_q_dot();
+
     // Set constraint-projected dynamics
     matrix_t N = matrix_t::Identity(na_, na_);
-    matrix_t Lambda = (Jc * Minv * Jc.transpose())
-                          .completeOrthogonalDecomposition()
-                          .pseudoInverse();
-    N -= Jc.transpose() * Lambda * Jc * Minv;
+    matrix_t Lambda =
+        (Jc * Minv.selfadjointView<Eigen::Upper>() * Jc.transpose())
+            .completeOrthogonalDecomposition()
+            .pseudoInverse();
+    N -= Jc.transpose() * Lambda * Jc * Minv.selfadjointView<Eigen::Upper>();
 
     // Inertial matrix
-    qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
+    qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) =
+        M.selfadjointView<Eigen::Upper>();
     // Contact jacobians
     for (auto &contact : contacts_) {
       qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_ + nu_ + contact.index,
@@ -181,19 +201,15 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     // Actuation matrix
     qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = -N * B;
     // Bias vector
-    qp_data.beq.middleRows(i_eq, na_) = -N * h + Jc * Lambda * dJcdq;
+    qp_data.beq.middleRows(i_eq, na_) = N * h + Jc.transpose() * Lambda * dJcdq;
 
     i_eq += na_;
 
   } else {
-    VLOG(10) << "Inertia";
     // Inertial matrix
     qp_data.Aeq.middleRows(i_eq, na_).leftCols(na_) = M;
     // Contact jacobians
-    VLOG(10) << "Contact";
     for (auto &contact : contacts_) {
-      VLOG(10) << "Adding " << contact.contact->name();
-      VLOG(10) << "Index " << contact.index;
       qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_ + nu_ + contact.index,
                                                    contact.contact->dim()) =
           -contact.contact->jacobian().transpose();
@@ -201,7 +217,7 @@ void DefaultFormulation::set_qp_data(QuadraticProgramData &qp_data) {
     // Actuation matrix
     qp_data.Aeq.middleRows(i_eq, na_).middleCols(na_, nu_) = -B;
     // Bias vector
-    qp_data.beq.middleRows(i_eq, na_) = -h;
+    qp_data.beq.middleRows(i_eq, na_) = h;
 
     i_eq += na_;
   }

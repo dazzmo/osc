@@ -2,6 +2,7 @@
 
 #include <pinocchio/algorithm/aba.hpp>
 #include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
 
 namespace osc {
 
@@ -12,9 +13,6 @@ InverseDynamics::InverseDynamics(const index_t &nq, const index_t &nv,
   Minv_ = matrix_t::Zero(nv, nv);
   h_ = vector_t::Zero(nv);
   B_ = matrix_t::Zero(nv, nu);
-
-  // jacobian_h_ = matrix_t::Zero(0, 0);
-  // jacobian_dot_q_dot_h_ = vector_t::Zero(0, 0);
 }
 
 void InverseDynamics::compute(const model_t &model, data_t &data,
@@ -46,7 +44,7 @@ void InverseDynamics::compute_inertial_matrix_inverse(const model_t &model,
 void InverseDynamics::compute_nonlinear_effects(const model_t &model,
                                                 data_t &data, const vector_t &q,
                                                 const vector_t &v) {
-  // h_ = pinocchio::nonlinearEffects(model, data, q, v);
+  h_ = pinocchio::nonLinearEffects(model, data, q, v);
 }
 
 const matrix_t &InverseDynamics::get_inertial_matrix() const { return M_; }

@@ -35,7 +35,13 @@ struct SE3TrajectoryReference {
     velocity = pinocchio::Motion::Zero();
     acceleration = pinocchio::Motion::Zero();
   }
-  
+
+  SE3TrajectoryReference(const pinocchio::SE3 &pose) {
+    position = pose;
+    velocity = pinocchio::Motion::Zero();
+    acceleration = pinocchio::Motion::Zero();
+  }
+
   SE3TrajectoryReference(const TrajectoryReference &ref) {}
 
   void set(const TrajectoryReference &ref);

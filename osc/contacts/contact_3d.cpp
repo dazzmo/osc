@@ -1,4 +1,4 @@
-#include "osc/contacts/contact.hpp"
+#include "osc/contacts/contact_3d.hpp"
 
 namespace osc {
 
@@ -18,6 +18,10 @@ void FrictionContact3D::compute(const model_t &model, data_t &data,
                      proj(get_surface_normal(), surface_binormal) -
                      proj(surface_tangent, surface_binormal);
 
+  VLOG(10) << "n = " << get_surface_normal().transpose();
+  VLOG(10) << "t = " << surface_tangent.transpose();
+  VLOG(10) << "b = " << surface_binormal.transpose();
+
   // Inner approximation of friction cone
   double mu_tilde = mu_ / sqrt(2.0);
 
@@ -36,34 +40,19 @@ void FrictionContact3D::compute(const model_t &model, data_t &data,
                   mu_tilde * get_surface_normal().transpose();
   A.row(3) << -surface_binormal.transpose() -
                   mu_tilde * get_surface_normal().transpose();
+  // f_min < f.dot(n) < f_max
+  A.row(4) << get_surface_normal().transpose();
+  A.row(5) << -get_surface_normal().transpose();
 
   b.setZero();
+  b(4) = -get_max_normal_force();
+  b(5) = get_min_normal_force();
 
   lb.setConstant(-std::numeric_limits<double>::max());
   ub.setZero();
 
-  // Compute other quantities
-  compute_jacobian(model, data, q);
-  compute_jacobian_dot_q_dot(model, data, q, v);
-}
-
-void FrictionContact3D::compute_jacobian(const model_t &model, data_t &data,
-                                         const vector_t &q) {
-  pinocchio::getFrameJacobian(model, data, frame_id(), pinocchio::WORLD,
-                              jacobian_full_);
-
-  // todo - investigate the effects of the chosen frame
-  jacobian_ = jacobian_full_.topRows(3);
-}
-
-void FrictionContact3D::compute_jacobian_dot_q_dot(const model_t &model,
-                                                   data_t &data,
-                                                   const vector_t &q,
-                                                   const vector_t &v) {
-  pinocchio::Motion acc = pinocchio::getFrameClassicalAcceleration(
-      model, data, frame_id(), pinocchio::WORLD);
-
-  jacobian_dot_q_dot_ = acc.linear();
+  // Compute aspects related to the frame task
+  FrameTask::compute(model, data, q, v);
 }
 
 }  // namespace osc

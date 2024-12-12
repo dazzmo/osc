@@ -37,11 +37,16 @@ class InverseDynamics {
   virtual void compute_holonomic_constraint_jacobian(const model_t &model,
                                                      data_t &data,
                                                      const vector_t &q,
-                                                     const vector_t &v) {}
+                                                     const vector_t &v) {
+    assert(dim_constraints() && "Dynamics constraint jacobian not resized");
+  }
 
   virtual void compute_holonomic_constraint_jacobian_dot_q_dot(
       const model_t &model, data_t &data, const vector_t &q,
-      const vector_t &v) {}
+      const vector_t &v) {
+    assert(dim_constraints() &&
+           "Dynamics constraint jacobian_dot_q_dot not resized");
+  }
 
   const matrix_t &get_inertial_matrix() const;
   const matrix_t &get_inertial_matrix_inverse() const;

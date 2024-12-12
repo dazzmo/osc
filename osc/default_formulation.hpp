@@ -11,7 +11,7 @@
 #pragma once
 
 #include "osc/common.hpp"
-#include "osc/contacts/contact.hpp"
+#include "osc/contacts/base.hpp"
 #include "osc/dynamics.hpp"
 #include "osc/qp_data.hpp"
 #include "osc/tasks/acceleration.hpp"
@@ -106,14 +106,14 @@ class DefaultFormulation {
     actuation_bounds_ = bounds;
   }
 
-  void add_contact(const std::shared_ptr<AbstractFrictionContact> &contact,
+  void add_contact(const std::shared_ptr<ContactBase> &contact,
                    const index_t &priority, const double &weighting = 1.0) {
     if (priority == 0) nceq_ += contact->dim();
     // todo - check that contact isn't currently being removed
     contacts_.push_back(ContactInfo(contact, priority, weighting, nk_));
     nk_ += contact->dim();
     nv_ += contact->dim();
-    ncin_ += 4;
+    ncin_ += 6;
   }
 
   /**
@@ -128,7 +128,7 @@ class DefaultFormulation {
                       const double &duration) {
     // todo - check that contact isn't already being removed
     // Find the associated contact
-    std::shared_ptr<AbstractFrictionContact> contact = nullptr;
+    std::shared_ptr<ContactBase> contact = nullptr;
     for (auto it = contacts_.begin(); it != contacts_.end(); ++it) {
       if (it->contact->name() == name) {
         contact = it->contact;
@@ -214,7 +214,7 @@ class DefaultFormulation {
   };
 
   struct ContactInfo {
-    ContactInfo(const std::shared_ptr<AbstractFrictionContact> &contact,
+    ContactInfo(const std::shared_ptr<ContactBase> &contact,
                 const index_t &priority, const double &weighting,
                 const index_t &index) {
       this->contact = contact;
@@ -222,7 +222,7 @@ class DefaultFormulation {
       this->weighting = weighting;
       this->index = index;
     }
-    std::shared_ptr<AbstractFrictionContact> contact;
+    std::shared_ptr<ContactBase> contact;
     // Contact Priority
     index_t priority = 0;
     // Weighting of the contact
@@ -232,7 +232,7 @@ class DefaultFormulation {
   };
 
   struct ContactReleaseInfo {
-    ContactReleaseInfo(const std::shared_ptr<AbstractFrictionContact> &contact,
+    ContactReleaseInfo(const std::shared_ptr<ContactBase> &contact,
                        const double &t, const double &duration) {
       this->contact = contact;
       t0 = t;
@@ -241,7 +241,7 @@ class DefaultFormulation {
     }
 
     // Associated contact
-    std::shared_ptr<AbstractFrictionContact> contact;
+    std::shared_ptr<ContactBase> contact;
     // Starting time of release
     double t0;
     // Expected release time

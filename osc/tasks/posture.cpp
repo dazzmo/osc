@@ -39,13 +39,19 @@ PostureTask::PostureTask(const model_t &model)
   reference_ = TrajectoryReference(dim(), dim(), dim());
 }
 
+void PostureTask::compute_error(const model_t &model, data_t &data,
+                                const vector_t &q, const vector_t &v) {
+  e_ = reference_.position - q(q_indices_);
+  e_dot_ = reference_.velocity - v(v_indices_);
+}
+
 void PostureTask::compute(const model_t &model, data_t &data, const vector_t &q,
                           const vector_t &v) {
   compute_jacobian(model, data, q);
   compute_jacobian_dot_q_dot(model, data, q, v);
   compute_error(model, data, q, v);
 
-  xacc_des_ = -(Kp_.asDiagonal() * e_ + Kd_.asDiagonal() * e_dot_) +
+  xacc_des_ = Kp_.asDiagonal() * e_ + Kd_.asDiagonal() * e_dot_ +
               reference_.acceleration;
 }
 

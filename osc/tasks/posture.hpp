@@ -33,10 +33,7 @@ class PostureTask : public MotionTask {
   }
 
   void compute_error(const model_t &model, data_t &data, const vector_t &q,
-                     const vector_t &v) override {
-    e_ = q(q_indices_) - reference_.position;
-    e_dot_ = v(v_indices_) - reference_.velocity;
-  }
+                     const vector_t &v) override ;
 
  private:
   TrajectoryReference reference_;

@@ -5,13 +5,15 @@ find_package(glog REQUIRED)
 # Collect source files
 SET(${PROJECT_NAME}_SOURCES
 dynamics.cpp
+# se3.cpp
 default_formulation.cpp
 trajectory_reference.cpp
 tasks/centre_of_mass.cpp
 tasks/posture.cpp
 tasks/frame.cpp
 tasks/motion.cpp
-contacts/contact.cpp
+contacts/base.cpp
+contacts/contact_3d.cpp
 )
 
 SET(${PROJECT_NAME}_LIBRARIES

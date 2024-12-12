@@ -21,32 +21,42 @@ CentreOfMassTask::CentreOfMassTask(const model_t &model,
   xacc_des_ = vector_t::Zero(dim());
 
   // Set reference dimension
-  reference_ = TrajectoryReference(3, 3, 3);
+  reference_ = TrajectoryReference(dim(), dim(), dim());
 }
 
 void CentreOfMassTask::compute_jacobian(const model_t &model, data_t &data,
                                         const vector_t &q) {
-  pinocchio::getFrameJacobian(model, data, reference_frame_id(),
-                              pinocchio::LOCAL, jacobian_full_);
+  // // Compute in the required reference frame
+  // auto &oMr = data.oMf[reference_frame_id()];
+  // // Get Jacobian of reference frame with respect to world
+  // pinocchio::getFrameJacobian(model, data, reference_frame_id(),
+  //                             pinocchio::WORLD, jacobian_full_);
 
-  jacobian_ =
-      pinocchio::jacobianCenterOfMass(model, data) - jacobian_full_.topRows(3);
+  jacobian_ = pinocchio::jacobianCenterOfMass(model, data, false);
 }
 
 void CentreOfMassTask::compute_jacobian_dot_q_dot(const model_t &model,
                                                   data_t &data,
                                                   const vector_t &q,
                                                   const vector_t &v) {
+  // Compute in the required reference frame
+  // auto &oMr = data.oMf[reference_frame_id()];
+
+  // pinocchio::Motion acc = pinocchio::getFrameClassicalAcceleration(
+  //     model, data, reference_frame_id(), pinocchio::WORLD);
+
+  // Get reference frame point acceleration
   jacobian_dot_q_dot_ = data.acom[0];
+  // oMr.actInv(data.acom[0] - acc.linear());
 }
 
 void CentreOfMassTask::compute_error(const model_t &model, data_t &data,
                                      const vector_t &q, const vector_t &v) {
   // Compute centre of mass with respect to reference frame
-  e_ = data.oMf[reference_frame_id()].actInv(data.com[0]) - reference_.position;
+  e_ = reference_.position - data.oMf[reference_frame_id()].actInv(data.com[0]);
   // Also compute centre of mass velocity
   e_dot_ =
-      data.oMf[reference_frame_id()].actInv(data.vcom[0]) - reference_.velocity;
+      reference_.velocity - data.oMf[reference_frame_id()].actInv(data.vcom[0]);
 }
 
 void CentreOfMassTask::compute(const model_t &model, data_t &data,
@@ -56,7 +66,8 @@ void CentreOfMassTask::compute(const model_t &model, data_t &data,
   compute_error(model, data, q, v);
 
   // Set desired task acceleration
-  xacc_des_ = Kp_.asDiagonal() * e_ + Kd_.asDiagonal() * e_dot_;
+  xacc_des_ = Kp_.asDiagonal() * e_ + Kd_.asDiagonal() * e_dot_ +
+              reference_.acceleration;
 }
 
 }  // namespace osc

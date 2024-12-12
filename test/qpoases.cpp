@@ -8,6 +8,7 @@
 
 #include "osc/contacts/contact.hpp"
 #include "osc/default_formulation.hpp"
+#include "osc/tasks/centre_of_mass.hpp"
 #include "osc/tasks/frame.hpp"
 #include "osc/tasks/posture.hpp"
 
@@ -46,11 +47,16 @@ TEST(DefaultFormulation, AddContact) {
   program.add_contact(lf, 0, 1.0);
   program.add_contact(rf, 0, 1.0);
 
-  // Add a task
+  // Orientation Task
   auto task = osc::FrameTask::create(model, "pelvis",
                                      osc::FrameTask::Type::Orientation);
-
+  // Posture task
   auto posture_task = std::make_shared<osc::PostureTask>(model);
+  posture_task->name("posture");
+
+  // CoM task
+  auto com = std::make_shared<osc::CentreOfMassTask>(model);
+  com->name("com");
 
   auto actuation_task = std::make_shared<osc::MinimiseActuationTask>(model, 10);
 
@@ -65,6 +71,8 @@ TEST(DefaultFormulation, AddContact) {
 
   program.add_motion_task(task, 1, 0.2);
   program.add_motion_task(posture_task, 1, 1e-1);
+  program.add_motion_task(com, 0, 1e0);
+
   program.add_actuation_task(actuation_task, 1, 1e-1);
   program.add_bounds(actuation_bounds);
   program.add_bounds(acceleration_bounds);
@@ -91,6 +99,8 @@ TEST(DefaultFormulation, AddContact) {
 
   program.set_qp_data(data);
 
+  bool resize = true;
+
   // Create QPOASES solver
   osc::qpOASESSolver qp_solver(program.n_variables(),
                                program.n_eq_constraints(),
@@ -105,8 +115,13 @@ TEST(DefaultFormulation, AddContact) {
     osc::index_t nceq = program.n_eq_constraints();
     osc::index_t ncin = program.n_in_constraints();
 
+    LOG(INFO) << "nv = " << nv;
+    LOG(INFO) << "nceq = " << nceq;
+    LOG(INFO) << "ncin = " << ncin;
+
     if (nv != nv_prev || nceq != nceq_prev || ncin != ncin_prev) {
       LOG(INFO) << "Resize!";
+      resize = true;
       qp_solver = osc::qpOASESSolver(nv, nceq, ncin);
       data = osc::QuadraticProgramData(nv, nceq, ncin);
     }
@@ -114,8 +129,9 @@ TEST(DefaultFormulation, AddContact) {
     program.set_qp_data(data);
     LOG(INFO) << "Solve";
 
-    if (t < 0.01) {
+    if (resize) {
       qp_solver.solve(data, false, 500);
+      resize = false;
     } else {
       qp_solver.solve(data, true, 500);
     }

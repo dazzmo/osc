@@ -23,7 +23,7 @@ class FrameTask : public MotionTask {
       const std::string &reference_frame = "universe");
 
   index_t dim() const override {
-    if (type == Type::Position || type == Type::Orientation) {
+    if (get_type() == Type::Position || get_type() == Type::Orientation) {
       return 3;
     } else {
       return 6;
@@ -33,11 +33,16 @@ class FrameTask : public MotionTask {
   const string_t &frame() const { return frame_; }
   const index_t &frame_id() const { return frame_id_; }
 
+  void set_type(const Type &type);
+  const Type &get_type() const { return type_; }
+
   void set_reference(const TrajectoryReference &ref) override {
     reference_.set(ref);
   }
-
+  void set_reference(const pinocchio::SE3 &ref) { reference_.position = ref; }
   void set_reference(const SE3TrajectoryReference &ref) { reference_ = ref; }
+
+  const SE3TrajectoryReference &get_reference() const { return reference_; }
 
   void compute(const model_t &model, data_t &data, const vector_t &q,
                const vector_t &v) override;
@@ -52,12 +57,11 @@ class FrameTask : public MotionTask {
   void compute_error(const model_t &model, data_t &data, const vector_t &q,
                      const vector_t &v) override;
 
-  Type type;
-
  private:
   string_t frame_;
   index_t frame_id_;
   matrix_t jacobian_full_;
+  Type type_;
 
   SE3TrajectoryReference reference_;
 };
