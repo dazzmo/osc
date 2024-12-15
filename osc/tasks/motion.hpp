@@ -100,6 +100,19 @@ class MotionTask : public TaskBase {
                              const vector_t &q, const vector_t &v) = 0;
 
  protected:
+  void resize(const index_t &dim, const index_t &nv) {
+    jacobian_ = matrix_t::Zero(dim, nv);
+    jacobian_dot_q_dot_ = vector_t::Zero(dim);
+
+    e_ = vector_t::Zero(dim);
+    e_dot_ = vector_t::Zero(dim);
+
+    xacc_des_ = vector_t::Zero(dim);
+
+    Kp_ = vector_t::Ones(dim);
+    Kd_ = vector_t::Ones(dim);
+  }
+
   matrix_t jacobian_;
   vector_t jacobian_dot_q_dot_;
 

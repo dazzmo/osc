@@ -8,16 +8,7 @@ namespace osc {
 CentreOfMassTask::CentreOfMassTask(const model_t &model) : MotionTask(model) {
   jacobian_full_ = matrix_t::Zero(6, model.nv);
   // Error
-  e_ = vector_t::Zero(dim());
-  e_dot_ = vector_t::Zero(dim());
-
-  // Default gains
-  Kp_ = vector_t::Ones(dim());
-  Kd_ = vector_t::Ones(dim());
-
-  // Desired task acceleration
-  xacc_des_ = vector_t::Zero(dim());
-
+  this->resize(dim(), model.nv);
   // Set reference dimension
   reference_ = TrajectoryReference(dim(), dim(), dim());
 }

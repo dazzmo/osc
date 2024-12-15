@@ -16,19 +16,7 @@ PostureTask::PostureTask(const model_t &model)
     }
   }
 
-  // Error
-  e_ = vector_t::Zero(dim());
-  e_dot_ = vector_t::Zero(dim());
-
-  // Default gains
-  Kp_ = vector_t::Ones(dim());
-  Kd_ = vector_t::Ones(dim());
-
-  // Desired task acceleration
-  xacc_des_ = vector_t::Zero(dim());
-
-  jacobian_ = matrix_t::Zero(dim(), model.nv);
-  jacobian_dot_q_dot_ = vector_t::Zero(dim());
+  this->resize(dim(), model.nv);
 
   index_t row = 0;
   // Set joint jacobian entries to 1

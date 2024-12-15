@@ -105,7 +105,7 @@ void FrameSE3::compute_error(const model_t &model, data_t &data,
     // Get error in local world-aligned frame
     se3_t wMl = se3_t::Identity();
     wMl.rotation(oMf.rotation());
-    // Compute error in the local frame
+    // Compute error in the world-aligned local frame
     p_err = wMl.act(pinocchio::log6(fMt));
     // Compute Jacobian of point
     v_err = v_ref - pinocchio::getFrameVelocity(model, data, frame_id(),

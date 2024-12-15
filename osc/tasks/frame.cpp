@@ -8,7 +8,9 @@ namespace osc {
 
 FrameTask::FrameTask(const model_t &model, const std::string &frame,
                      const Type &type)
-    : MotionTask(model), FrameSE3(model, frame, type) {}
+    : MotionTask(model), FrameSE3(model, frame, type) {
+  this->resize(dim(), model.nv);
+}
 
 std::shared_ptr<FrameTask> FrameTask::create(const model_t &model,
                                              const std::string &frame,

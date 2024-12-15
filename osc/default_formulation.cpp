@@ -30,61 +30,23 @@ void DefaultFormulation::compute(const double &t, const vector_t &q,
   pinocchio::centerOfMass(model, data, q, v);
   pinocchio::updateFramePlacements(model, data);
 
-  VLOG(10) << "Check contact removals";
-  // Check if any scheduled contact points are to be removed from the program,
-  // if not, continue decreasing their maximum normal reaction forces.
-  for (auto info_it = contact_releases_.begin();
-       info_it != contact_releases_.end();) {
-    VLOG(10) << "name: " << info_it->contact->name();
-    bool removed = false;
-    if (t <= info_it->tf) {
-      VLOG(10) << "Scaling";
-      // Linearly scale the maximum normal force to zero for the contact
-      double n_max_new =
-          info_it->f_max * (info_it->tf - t) / (info_it->tf - info_it->t0);
-      info_it->contact->set_max_normal_force(n_max_new);
-    } else {
-      VLOG(10) << "Removing";
-      // Remove contact from the contact vector and variables
-      nk_ -= info_it->contact->dim();
-      nv_ -= info_it->contact->dim();
-      // todo - check if this is a priority 0 contact
-      // nceq_ -= info.contact->dim();
-      ncin_ -= 6;
-      // Remove from the vector
-      for (auto it = contacts_.begin(); it != contacts_.end();) {
-        if (it->contact->name() == info_it->contact->name()) {
-          it = contacts_.erase(it);
-          removed = true;
-        } else {
-          it++;
-        }
-      }
-    }
-    if (removed) {
-      info_it = contact_releases_.erase(info_it);
-    } else {
-      info_it++;
-    }
-  }
+  // Assess actuation task schedule
+  check_scheduled_contacts(t, contacts_scheduled_, contacts_);
+  check_scheduled_tasks(t, motion_tasks_scheduled_, motion_tasks_);
+  check_scheduled_tasks(t, actuation_tasks_scheduled_, actuation_tasks_);
 
-  VLOG(10) << "Update indices";
-  // Update contact indices
-  int idx = 0;
-  for (auto &contact : contacts_) {
-    contact.index = idx;
-    idx += contact.contact->dim();
-  }
-
+  // Compute all contacts and tasks
   VLOG(10) << "Motion";
   // Motion tasks
   for (auto &info : motion_tasks_) {
+    VLOG(10) << "Computing " << info.task->name();
     info.task->compute(model, data, q, v);
   }
 
   VLOG(10) << "Contact";
   // Contact
   for (auto &info : contacts_) {
+    VLOG(10) << "Computing " << info.contact->name();
     info.contact->compute(model, data, q, v);
   }
 
