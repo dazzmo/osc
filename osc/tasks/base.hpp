@@ -1,7 +1,6 @@
 #pragma once
 
 #include "osc/common.hpp"
-#include "osc/holonomic.hpp"
 namespace osc {
 
 /**
