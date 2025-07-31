@@ -1,4 +1,5 @@
 find_package(Eigen3 3.3 REQUIRED)
+find_package(casadi REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(glog REQUIRED)
 
@@ -19,17 +20,9 @@ contacts/contact_3d.cpp
 SET(${PROJECT_NAME}_LIBRARIES
 Eigen3::Eigen
 pinocchio::pinocchio
+casadi::casadi
 glog
 )
-
-# qpOASES
-if(WITH_QPOASES)
-  message(STATUS "Including qpOASES as numeric optimization solver")
-  find_package(qpOASES REQUIRED)
-  list(APPEND ${PROJECT_NAME}_LIBRARIES qpOASES)
-  list(APPEND ${PROJECT_NAME}_SOURCES solvers/qpoases.cpp)
-  add_compile_definitions(WITH_QPOASES)
-endif(WITH_QPOASES)
 
 include(GNUInstallDirs)
 

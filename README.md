@@ -6,10 +6,10 @@
 <br>
 <div align="center">
 
-  <h1 align="center">Operational Space Controller</h1>
+  <h1 align="center">Inverse Dynamics Whole-Body Control</h1>
 
   <p align="left">
-    A work-in-progress implementation of a basic low-level operational space control used for whole body task-space control of articulated robotic systems subject to contact.
+    An inverse-dynamics-based control framework built upon the Pinocchio and CasADi libraries.
   </p>
 </div>
 
@@ -25,15 +25,8 @@
 
 ### Prerequisites
 osc requires the following third-party libraries in order to be built and installed.
-* [boost](https://www.boost.org/) (Version 1.70 or higher)
-* [bopt]()
-* [pinocchio]()
-* [casadi]()
-
-For testing purposes we have (this is later be a toggle-able option):
-* [googletest](https://github.com/google/googletest)
-* [glog](https://github.com/google/glog)
-
+* [Pinocchio](https://github.com/stack-of-tasks/pinocchio)
+* [CasADi](https://github.com/casadi/casadi) - This library is responsible for translating the control problems into numerical optimisation problems. As a result, you will need to install any solvers you would like with this library. You can then call them as normal with our solver interface.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -72,5 +65,5 @@ Damian Abood - damian.abood@sydney.edu.au
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Acknowledgements
-
+This software package is inspired largely by TSID.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
