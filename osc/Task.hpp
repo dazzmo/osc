@@ -131,7 +131,7 @@ class Task : public TaskAbstract {
    public:
     using TargetType = _TargetType;
 
-    Task() {}
+    Task(const Size &dimension) : TaskAbstract(dimension) {}
 
     void setTarget(const TargetType &target) { target_ = target; }
     const TargetType &getTarget() const { return target_; }

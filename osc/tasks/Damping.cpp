@@ -2,10 +2,12 @@
 
 namespace osc {
 
+DampingTask::DampingTask(const State &state) : Task<Vector>(state.nv()) {}
+
 void DampingTask::computeError(const State &state, Eigen::Ref<Vector> e,
                                Eigen::Ref<Vector> dot_e) const {
     e.setZero();
-    dot_e = state.v() - getTarget();
+    dot_e = state.v();
 }
 
 void DampingTask::computeJacobian(const State &state,

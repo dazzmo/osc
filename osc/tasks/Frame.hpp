@@ -25,6 +25,8 @@ struct FrameTarget {
  *
  */
 class FrameTask : public Task<FrameTarget> {
+    static constexpr Size DIMENSION = 6;
+
    public:
     FrameTask(const String &frame);
 

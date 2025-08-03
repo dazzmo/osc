@@ -5,7 +5,8 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 
 namespace osc {
-FrameTask::FrameTask(const String &frame) {}
+FrameTask::FrameTask(const String &frame)
+    : Task<FrameTarget>(DIMENSION), frame_(frame) {}
 
 void FrameTask::computeError(const State &state, Eigen::Ref<Vector> e,
                              Eigen::Ref<Vector> dot_e) const {

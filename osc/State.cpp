@@ -29,12 +29,12 @@ void State::update(const ConfigVectorType &q, const TangentVectorType &v) {
 
 pinocchio::JointIndex State::getJointIndex(const String &joint) const {
     const auto index = model_.getJointId(joint);
-    assert(index <= model_.joints.size() && "Joint does not exist");
+    assert(index < model_.joints.size() && "Joint does not exist");
     return index;
 }
 pinocchio::FrameIndex State::getFrameIndex(const String &frame) const {
     const auto index = model_.getFrameId(frame);
-    assert(index <= model_.frames.size() && "Frame does not exist");
+    assert(index < model_.frames.size() && "Frame does not exist");
     return index;
 }
 

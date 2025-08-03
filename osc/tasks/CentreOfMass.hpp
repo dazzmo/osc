@@ -25,7 +25,10 @@ struct CentreOfMassTarget {
  *
  */
 class CentreOfMassTask : public Task<CentreOfMassTarget> {
-   public:
+   static constexpr Size DIMENSION = 3;
+    public:
+    CentreOfMassTask();
+
     void computeError(const State &state, Eigen::Ref<Vector> e,
                       Eigen::Ref<Vector> dot_e) const override;
 

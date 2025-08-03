@@ -2,6 +2,8 @@
 
 namespace osc {
 
+PostureTask::PostureTask(const State &state) : Task<Vector>(state.nv()) {}
+
 void PostureTask::computeError(const State &state, Eigen::Ref<Vector> e,
                                Eigen::Ref<Vector> dot_e) const {
     e = pinocchio::difference(state.model(), getTarget(), state.q());

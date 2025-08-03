@@ -28,7 +28,7 @@ class State {
     const TangentVectorType &v() const { return v_; }
 
     const Model &model() const { return model_; }
-    bool hasFloatingBase() const { return model_.names[0] == "root_link"; }
+    bool hasFloatingBase() const { return model_.existJointName("root_joint"); }
 
     void update(const ConfigVectorType &q, const TangentVectorType &v);
 

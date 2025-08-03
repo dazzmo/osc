@@ -11,9 +11,13 @@ namespace osc {
  */
 class DampingTask : public Task<Vector> {
    public:
-    void computeError(const State &state, Eigen::Ref<Vector> e, Eigen::Ref<Vector> dot_e) const override;
+    DampingTask(const State &state);
 
-    void computeJacobian(const State &state, Eigen::Ref<Matrix> jac) const override;
+    void computeError(const State &state, Eigen::Ref<Vector> e,
+                      Eigen::Ref<Vector> dot_e) const override;
+
+    void computeJacobian(const State &state,
+                         Eigen::Ref<Matrix> jac) const override;
 
     void computeAccelerationBias(const State &state,
                                  Eigen::Ref<Vector> bias) const override;
