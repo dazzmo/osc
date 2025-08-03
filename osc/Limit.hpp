@@ -7,95 +7,63 @@ namespace osc {
 
 class LimitAbstract {
    public:
-    Size getDimension() const { return dimension_; }
+    using SharedPtr = std::shared_ptr<LimitAbstract>;
 
     /**
-     * @brief Set the effective gain of the task
+     * @brief The gain of the limit. If set to zero, the limit is effectively
+     * unbounded. If set to 1 or higher, enforces the limit at full strength.
      *
      * @param gain
      */
     void setGain(const Real &gain) { gain_ = gain; }
-    const Real &getGain() const { return gain_; }
+    const Real &gain() const { return gain_; }
 
-    /**
-     * @brief Computes the task error
-     *
-     * @param state
-     * @param e
-     */
-    virtual void compute(const State &state, Eigen::Ref<Vector> c) = 0;
+    virtual void computeLimits(const State &state, const Real &dt,
+                               Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubA,
+                               Eigen::Ref<Vector> lbx,
+                               Eigen::Ref<Vector> ubx) const = 0;
 
-    /**
-     * @brief Computes the task Jacobian
-     *
-     * @param state
-     * @param jac
-     */
-    virtual void computeJacobian(const State &state,
-                                 Eigen::Ref<Matrix> jac) = 0;
+    virtual void computeJacobian(const State &state, const Real &dt,
+                                 Eigen::Ref<Matrix> A) const = 0;
 
-    Vector compute(const State &state) {
-        Vector c(getDimension());
-        jac.setZero();
-        computeError(state, c);
-        return c;
+    virtual Size numLPConstraints() const { return m_; }
+
+    virtual void toLPConstraints(const State &state, const Real &dt,
+                                Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
+                                Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
+                                Eigen::Ref<Vector> lbx) const {
+        computeLimits(state, dt, lbA, ubA, lbx, ubx);
+        computeJacobian(state, dt, A);
+
+        // Add the gain to the limits
+        Real sigma = std::min(Real(1) / gain(), 1e9);
+        lbA *= sigma;
+        ubA *= sigma;
+        lbx *= sigma;
+        ubx *= sigma;
     }
 
-    Matrix computeJacobian(const State &state) {
-        Matrix jac(getDimension(), state.nv());
-        jac.setZero();
-        computeJacobian(state, jac);
-        return jac;
-    }
-
-    void toQPObjective(const State &state, Eigen::Ref<Matrix> H,
-                       Eigen::Ref<Vector> g) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
-
-        // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
-
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
-
-        // H = 2.0 * A.transpose() * A;
-        // g = A.transpose() * b;
-    }
-
-    void toQPConstraint(const State &state, Eigen::Ref<Matrix> A,
-                        Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA,
-                        Eigen::Ref<Vector> ubx, Eigen::Ref<Vector> lbx) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
-
-        // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
-
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
-
-        // H = 2.0 * A.transpose() * A;
-        // g = A.transpose() * b;
-    }
     // todo - virtual casadi::Function toCasadiFunction() const = 0;
 
    protected:
-    LimitAbstract() : dimension_(0) {}
-    LimitAbstract(const Size &dimension) : dimension_(dimension) {}
+    LimitAbstract() : m_(0), gain_(1.0) {}
+    LimitAbstract(const Size &m) : m_(m), gain_(1.0) {}
 
-    void setDimension(const Size &dimension) { dimension_ = dimension; }
+    void setDimension(const Size &m) { m_ = m; }
 
    private:
-    Size dimension_;
+    Size m_;
+    Real gain_;
 };
 
-template <typename T>
-class MotionLimit {};
+class MotionLimit : public LimitAbstract {
+   public:
+    MotionLimit(const Size &m) : LimitAbstract(m) {}
+};
 
-template <typaname T>
-class ActuationLimit {};
+class ActuationLimit : public LimitAbstract {
+   public:
+    ActuationLimit(const Size &m) : LimitAbstract(m) {}
+};
 
-};  // namespace osc
+}  // namespace osc

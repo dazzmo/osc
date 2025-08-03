@@ -8,9 +8,7 @@ enable_testing()
 
 # Create list of files
 SET(TEST_FILES
-osc.cpp
-task.cpp
-qpoases.cpp
+state.cpp
 )
 
 include(GoogleTest)
@@ -21,5 +19,8 @@ foreach(current_file IN LISTS TEST_FILES)
     target_link_libraries("${current_name}_unit_test" osc GTest::gtest_main glog gflags)
 endforeach()
 
-# Install URDF to build folder
-configure_file("${CMAKE_SOURCE_DIR}/test/cassie.urdf" "${CMAKE_BINARY_DIR}/cassie.urdf" COPYONLY)
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "${CMAKE_SOURCE_DIR}/test/cassie.urdf"
+            "${CMAKE_BINARY_DIR}/cassie.urdf"
+)

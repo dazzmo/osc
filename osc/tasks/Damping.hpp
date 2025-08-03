@@ -6,10 +6,10 @@
 namespace osc {
 
 /**
- * @brief Task for tracking a specified frame
+ * @brief Task for damping velocities
  *
  */
-class PostureTask : public Task<Vector> {
+class DampingTask : public Task<Vector> {
    public:
     void computeError(const State &state, Eigen::Ref<Vector> e, Eigen::Ref<Vector> dot_e) const override;
 

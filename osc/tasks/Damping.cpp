@@ -1,14 +1,14 @@
-#include "osc/tasks/Posture.hpp"
+#include "osc/tasks/Damping.hpp"
 
 namespace osc {
 
-void PostureTask::computeError(const State &state, Eigen::Ref<Vector> e,
+void DampingTask::computeError(const State &state, Eigen::Ref<Vector> e,
                                Eigen::Ref<Vector> dot_e) const {
-    e = pinocchio::difference(state.model(), getTarget(), state.q());
-    dot_e.setZero();
+    e.setZero();
+    dot_e = state.v() - getTarget();
 }
 
-void PostureTask::computeJacobian(const State &state,
+void DampingTask::computeJacobian(const State &state,
                                   Eigen::Ref<Matrix> jac) const {
     if (state.hasFloatingBase()) {
         jac.rightCols(state.nv() - 6).setIdentity();
@@ -17,7 +17,7 @@ void PostureTask::computeJacobian(const State &state,
     }
 }
 
-void PostureTask::computeAccelerationBias(const State &state,
+void DampingTask::computeAccelerationBias(const State &state,
                                           Eigen::Ref<Vector> bias) const {
     bias.setZero();
 }

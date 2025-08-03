@@ -21,13 +21,13 @@ class TaskAbstract {
 
     /**
      * @brief Set the effective gain of the task
-     * 
-     * @param gain 
+     *
+     * @param gain
      */
     void setGain(const Real &gain) { gain_ = gain; }
-    const Real &getGain() const { return gain_; }
+    const Real &gain() const { return gain_; }
 
-    const Vector &getWeighting() { return weighting_; }
+    const Vector &weighting() const { return weighting_; }
     void setWeighting(const Eigen::Ref<Vector> &weighting) {
         weighting_ = weighting;
     }
@@ -35,15 +35,14 @@ class TaskAbstract {
         weighting_.setConstant(weighting);
     }
 
-    void getVariables() {}
-
     /**
-     * @brief Computes the task error
+     * @brief Computes the task error and its rate.
      *
      * @param state
      * @param e
      */
-    virtual void computeError(const State &state, Eigen::Ref<Vector> e) = 0;
+    virtual void computeError(const State &state, Eigen::Ref<Vector> e,
+                              Eigen::Ref<Vector> dot_e) const = 0;
 
     /**
      * @brief Computes the task Jacobian
@@ -52,7 +51,7 @@ class TaskAbstract {
      * @param jac
      */
     virtual void computeJacobian(const State &state,
-                                 Eigen::Ref<Matrix> jac) = 0;
+                                 Eigen::Ref<Matrix> jac) const = 0;
     /**
      * @brief Computes the task acceleration bias term, given as \gamma =
      * \dot{J}(q) \dot{q}
@@ -61,63 +60,54 @@ class TaskAbstract {
      * @param jac
      */
     virtual void computeAccelerationBias(const State &state,
-                                         Eigen::Ref<Matrix> bias) = 0;
-
-    Vector computeError(const State &state) {
-        Vector e(getDimension());
-        jac.setZero();
-        computeError(state, e);
-        return e;
-    }
-
-    Matrix computeJacobian(const State &state) {
-        Matrix jac(getDimension(), state.nv());
-        jac.setZero();
-        computeJacobian(state, jac);
-        return jac;
-    }
+                                         Eigen::Ref<Vector> bias) const = 0;
 
     void toQPObjective(const State &state, Eigen::Ref<Matrix> H,
-                       Eigen::Ref<Vector> g) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
+                       Eigen::Ref<Vector> g) const {
+        Vector e, dot_e, bias;
+        computeError(state, e, dot_e);
+        Matrix J, W;
+        computeJacobian(state, J);
+        computeAccelerationBias(state, bias);
+        W = weighting().asDiagonal();
 
         // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
+        const Vector xacc = computeDesiredAcceleration(e, dot_e);
 
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
+        const Matrix A = W * J;
+        const Vector b = W * (bias - xacc);
 
-        // H = gain_ * 2.0 * A.transpose() * A;
-        // g = gain_ *  A.transpose() * b;
+        // Compute weighting
+        H = gain() * 2.0 * A.transpose() * A;
+        g = gain() * A.transpose() * b;
     }
 
-        void toQPConstraint(const State &state, Eigen::Ref<Matrix> A,
-                         Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA,
-                         Eigen::Ref<Vector> ubx, Eigen::Ref<Vector> lbx) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
-
-        // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
-
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
-
-        // H = 2.0 * A.transpose() * A;
-        // g = A.transpose() * b;
-    }
-
-    // todo - virtual casadi::Function toCasadiFunction(const Model &model) const = 0;
+    // todo - virtual casadi::Function toCasadiFunction(const Model &model)
 
     void setErrorPD(const Vector &Kp, const Vector &Kd) {}
 
+    Vector computeDesiredAcceleration(const Eigen::Ref<Vector> &e,
+                                      const Eigen::Ref<Vector> &dot_e) const {
+        return Kp_.asDiagonal() * e +
+               Kd_.asDiagonal() * dot_e;  // todo - plus desired xacc
+    }
+
    protected:
-    TaskAbstract() : dimension_(0), task_dimension_(0) {}
+    TaskAbstract()
+        : dimension_(0),
+          task_dimension_(0),
+          gain_(1.0),
+          weighting_(Vector::Ones(0)),
+          Kp_(Vector::Ones(0)),
+          Kd_(Vector::Ones(0)) {}
+
     TaskAbstract(const Size &dimension)
-        : dimension_(dimension), task_dimension_(dimension) {}
+        : dimension_(dimension),
+          task_dimension_(dimension),
+          gain_(1.0),
+          weighting_(Vector::Ones(dimension)),
+          Kp_(Vector::Ones(dimension)),
+          Kd_(Vector::Ones(dimension)) {}
 
     void setDimension(const Size &dimension) { dimension_ = dimension; }
     void setTaskDimension(const Size &dimension) {
@@ -125,9 +115,15 @@ class TaskAbstract {
     }
 
    private:
+    /// @brief Dimension of the error of the task
     Size dimension_;
     Size task_dimension_;
+
+    Real gain_;
     Vector weighting_;
+
+    Vector Kp_;
+    Vector Kd_;
 };
 
 template <typename _TargetType>
@@ -135,7 +131,7 @@ class Task : public TaskAbstract {
    public:
     using TargetType = _TargetType;
 
-    Task(const VariableVector &variables) {}
+    Task() {}
 
     void setTarget(const TargetType &target) { target_ = target; }
     const TargetType &getTarget() const { return target_; }
@@ -144,16 +140,4 @@ class Task : public TaskAbstract {
     TargetType target_;
 };
 
-template<typename _TargetType>
-class MotionTask : public TaskAbstract {
-
-};
-
-template<typename _TargetType>
-class ActuationTask : public TaskAbstract {
-
-};
-
-
-
-};  // namespace osc
+}  // namespace osc

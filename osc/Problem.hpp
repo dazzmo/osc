@@ -1,18 +1,12 @@
-/**
- * @file osc.hpp
- * @author your name (you@domain.com)
- * @brief Weighted Operational Space Control
- * @version 0.1
- * @date 2024-11-27
- *
- * @copyright Copyright (c) 2024
- *
- */
 #pragma once
 
 #include "osc/Constraint.hpp"
 #include "osc/Limit.hpp"
+#include "osc/QPData.hpp"
+#include "osc/QPSolver.hpp"
 #include "osc/State.hpp"
+#include "osc/Contact.hpp"
+#include "osc/Actuation.hpp"
 #include "osc/Task.hpp"
 
 namespace osc {
@@ -23,16 +17,38 @@ namespace osc {
  */
 class OSCProgram {
    private:
-    using IndexVector = std::list<Index>;
+    enum OSCVariables {
+        /// @brief Generalised accelerations
+        VAR_QACC = 0,
+        /// @brief Control inputs
+        VAR_CTRL,
+        /// @brief Contact force variables
+        VAR_CONTACT,
+        /// @brief Holonomic virtual forces
+        VAR_HOLONOMIC,
+        NUM_VARIABLES
+    };
 
-    enum OSCVariables { QACC, CTRL, CONTACT, HOLONOMIC, OSC_NUM_VARIABLES };
-    enum OSCConstriants { DYNAMICS, FRICTION, LIMITS, OSC_NUM_CONSTRAINTS };
+    enum OSCConstraints {
+        CON_DYNAMICS = 0,
+        CON_FRICTION,
+        CON_LIMITS,
+        CON_HOLONOMIC,
+        NUM_CONSTRAINTS
+    };
 
-    std::list<Size, OSC_NUM_VARIABLES> vidx = {};
-    std::list<Size, OSC_NUM_VARIABLES> vsz = {};
+    /// @brief Starting index of each variable
+    std::array<Index, NUM_VARIABLES> vidx = {};
+    /// @brief Sizes of each variable
+    std::array<Size, NUM_VARIABLES> vsz = {};
 
-    std::list<Size, OSC_NUM_CONSTRAINTS> cidx = {};
-    std::list<Size, OSC_NUM_CONSTRAINTS> csz = {};
+    /// @brief Starting index of each constraint
+    std::array<Index, NUM_CONSTRAINTS> cidx = {};
+    /// @brief Sizes of each constraint
+    std::array<Size, NUM_CONSTRAINTS> csz = {};
+
+    Size num_variables_ = 0;
+    Size num_constraints_ = 0;
 
     enum class BindingAction { NONE, ADD, REMOVE };
 
@@ -52,82 +68,61 @@ class OSCProgram {
         Real t_action;
     };
 
-    struct ContactBinding : public Binding<ContactAbstract::SharedPtr> {
-        ContactBinding(const ContactAbstract::SharedPtr &data,
-                       const BindingAction &action, const Real &t_action,
-                       const IndexVector &contact_indices)
-            : Binding<ContactAbstract::SharedPtr>(data, action, t_action),
-              contact_indices(contact_indices) {}
-
-        /// @brief Indices of variables to use for the binding
-        IndexVector contact_indices;
-    };
-
-    using MotionTaskBinding = Binding<MotionTask::SharedPtr>;
-    using ActuationTaskBinding = Binding<ActuationTask::SharedPtr>;
-    using MotionLimitBinding = Binding<MotionLimit::SharedPtr>;
-    using ActuationLimitBinding = Binding<ActuationLimit::SharedPtr>;
+    using TaskBinding = Binding<TaskAbstract::SharedPtr>;
+    using LimitBinding = Binding<LimitAbstract::SharedPtr>;
 
     using ConstraintBinding = Binding<ConstraintAbstract::SharedPtr>;
     using ContactBinding = Binding<ContactAbstract::SharedPtr>;
 
-    void computeProblemSize() {
-        Size nx = 0;
-        Size nc = 0;
-
-        nx += state.nv() + state.nu();
-        for (const auto &contact : contacts_) {
-            nc += contact->getDimension();
-            nx += contact->getDimension();
-        }
-    }
+    /**
+     * @brief Computes the size of the program based on the given state, tasks
+     * and constraints. Returns true if the program has changed size since the
+     * last time this function was called.
+     *
+     * @param state
+     * @return true
+     * @return false
+     */
+    bool computeProblemSize(const State &state);
 
    public:
-    OSCProgram(const State &state, const Size &nu) {
-        // Create variables for acceleration
-        addVariables("qacc", state.nv());
-    }
+    OSCProgram(const State &state, const Size &nu);
 
-    //   void init(const State &state, const String &solver = "qpoases", const
-    //   QPSolver::Options &opts = {});
+    void init(const State &state, const String &solver = "qpoases",
+              const QPSolver::Options &opts = {});
 
-    // solve(const State &state);
+    /**
+     * @brief Add a motion task to the problem that can be represented in the
+     * form
+     * \ddot{x} = J \ddot{q} + \dot{J} \dot{q}
+     *
+     * @param task
+     * @param t
+     * @param duration
+     */
+    void addMotionTask(const TaskAbstract::SharedPtr &task, const Real &t,
+                       const Real &duration = 0);
 
-    void addMotionTask(const MotionTask::SharedPtr &task, const Real &t,
-                       const Real &duration = 0) {
-        motion_tasks_.push_back(
-            MotionTaskBinding(task, BindingAction::ADD, t + duration));
-    }
-
-    void addActuationTask(const ActuationTask::SharedPtr &task, const Real &t,
-                          const Real &duration = 0) {
-        // Determine indices of the variables used
-        actuation_tasks_.push_back(
-            ActuationTaskBinding(task, BindingAction::ADD, t + duration));
-    }
+    /**
+     * @brief Add an actuation task to the problem that can be represented in
+     * the form
+     * \ddot{x} = J \ddot{u} + \dot{J} \dot{u}
+     *
+     * @param task
+     * @param t
+     * @param duration
+     */
+    void addActuationTask(const TaskAbstract::SharedPtr &task, const Real &t,
+                          const Real &duration = 0);
 
     void addContact(const ContactAbstract::SharedPtr &contact, const Real &t,
-                    const Real &duration = 0) {
-        // Add new variables to the program
+                    const Real &duration = 0);
 
-        // Determine indices of the variables used
-        const auto indices = in_indices_[OSC_IN::OSC_IN_CONTACT];
+    void addMotionLimit(const LimitAbstract::SharedPtr &limit, const Real &t,
+                        const Real &duration = 0);
 
-        contacts_.push_back(ContactBinding(contact, BindingAction::ADD,
-                                           t + duration, cindices));
-    }
-
-    void addMotionLimit(const MotionLimit::SharedPtr &limit, const Real &t,
-                        const Real &duration = 0) {
-        motion_limits_.push_back(
-            MotionLimitBinding(limit, BindingAction::ADD, t + duration));
-    }
-
-    void addActuationLimit(const ActuationLimit::SharedPtr &limit,
-                           const Real &t, const Real &duration = 0) {
-        actuation_limits_.push_back(
-            ActuationLimitBinding(limit, BindingAction::ADD, t + duration));
-    }
+    void addActuationLimit(const LimitAbstract::SharedPtr &limit, const Real &t,
+                           const Real &duration = 0);
 
     void addHolonomicConstraint(const ConstraintAbstract::SharedPtr &constraint,
                                 const Real &t, const Real &duration = 0);
@@ -142,7 +137,7 @@ class OSCProgram {
 
             if (it->action == BindingAction::ADD && t >= it->t_action) {
                 // Add task at full strength
-                it->action == BindingAction::NONE;
+                it->action = BindingAction::NONE;
             } else {
                 // Introduce the task/constraint at a linear rate
                 const Real &t0 = it->t_initial;
@@ -153,93 +148,37 @@ class OSCProgram {
 
             if (it->action == BindingAction::REMOVE && t >= it->t_action) {
                 // Remove the it
-                it = tasks_.erase(it);
+                it = bindings.erase(it);
                 continue;
             } else {
                 // Reduce the task/constraint at a linear rate
-                const Real &t0 = task->t_initial;
-                const Real &ta = task->t_action;
+                const Real &t0 = it->t_initial;
+                const Real &ta = it->t_action;
                 const Real tau = (t - t0) / (ta - t0);
-                task->data->setGain(1.0 - tau);
+                it->data->setGain(1.0 - tau);
             }
             ++it;
         }
     }
 
-    void schedule(const Real &t) {
-        // Compute the dimension of the problem
-        scheduleBindings(t, tasks_);
-        scheduleBindings(t, limits_);
-        scheduleBindings(t, constraints_);
-        scheduleBindings(t, contacts_);
-
-        // Check if problem has changed size
-    }
-
-    void solve(const Real &t, const State &state, const Real &dt) {
-        // Manage tasks and constraints
-        schedule(t);
-
-        Matrix A;
-        Vector lbA, ubA;
-
-        // Dynamics constraint
-        A.block(ConstraintIndex::DYNAMICS, Index::QACC,
-                ConstraintSize::DYNAMICS, VariableSize::QACC) =
-            state.getInertiaMatrix();
-
-        lbA.middleRows(ConstraintIndex::DYNAMICS, ConstraintSize::DYNAMICS) =
-            -state.getCoriolisAndGravitationalBias();
-        ubA.middleRows(ConstraintIndex::DYNAMICS, ConstraintSize::DYNAMICS) =
-            -state.getCoriolisAndGravitationalBias();
-
-        for (const auto &actuation : actuations_) {
-            const Matrix Bi = actuation.data->computeJacobian(state);
-            A.topRows(state.nv()).middleCols(state.nv(), actuation->indices) -=
-                Bi;
-        }
-
-        // Add contact jacobians
-        Size idx = 0;
-        for (const auto &contact : contacts_) {
-            const auto nc = contact->getFrictionCone()->numParameters();
-
-            // Add contact dynamics
-            const auto &ci = contact->contact_indices;
-
-            A.block(Index::QACC, Index::QACC, state.nv(), state.nv()) -=
-                contact->computeContactJacobian().transpose();
-
-            idx += contact->getFrictionCone()->numParameters();
-        }
-
-        // For all tasks and constraints, add to program
-        for (const auto &task : motion_tasks_) {
-            auto Hi = H.topLeftCorner(0, 0, state.nv(), state.nv());
-            task->addToQPObjective(state, H, g);
-        }
-        for (const auto &contact : contacts_) {
-            // constraint index
-            // constraint->addQPConstraint(state, H, g);
-        }
-        for (const auto &limit : limits_) {
-            limit->addToQPConstraints(state, H, g);
-        }
-
-        // Solve with selected QP solver
-    }
-
-    // For a given variable set, return the values
-    void getValue(const VariableVector &variable, Vector &values);
+    void schedule(const Real &t);
+    void solve(const Real &t, const State &state, const Real &dt);
 
    private:
-    std::vector<MotionTaskBinding> motion_tasks_;
-    std::vector<ActuationTaskBinding> actuation_tasks_;
+    std::vector<TaskBinding> motion_tasks_;
+    std::vector<TaskBinding> actuation_tasks_;
 
-    std::vector<MotionLimitBinding> motion_limits_;
-    std::vector<ActuationLimitBinding> actuation_limits_;
+    std::vector<LimitBinding> motion_limits_;
+    std::vector<LimitBinding> actuation_limits_;
 
     std::vector<ContactBinding> contacts_;
+
+    std::vector<ConstraintBinding> constraints_;
+
+    std::vector<ActuationAbstract::SharedPtr> actuations_;
+
+    std::unique_ptr<ConicData> conic_data_;
+    std::unique_ptr<QPSolver> qp_solver_;
 };
 
 }  // namespace osc

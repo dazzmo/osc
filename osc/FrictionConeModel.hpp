@@ -14,16 +14,21 @@ namespace osc {
  */
 class FrictionConeModelAbstract {
    public:
-    using SharedPtr = std::shared_ptr<FrictionConeAbstract>;
+    using SharedPtr = std::shared_ptr<FrictionConeModelAbstract>;
 
     void setCoefficient(const Real &mu) { mu_ = mu; }
     const Real &getCoefficient() const { return mu_; }
 
-    virtual void toLPConstraint(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                                Eigen::Ref<Vector> lbA) {}
+    virtual Size numLPConstraints() const { return 0; }
 
-    virtual void toSOCPConstraint(Eigen::Ref<Matrix> H, Eigen::Ref<Matrix> A,
-                                  Eigen::Ref<Vector> g) {}
+    virtual void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
+                                 Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
+                                 Eigen::Ref<Vector> lbx) const {}
+
+    virtual Size numSOCPConstraints() const { return 0; }
+
+    virtual void toSOCPConstraints(Eigen::Ref<Matrix> H, Eigen::Ref<Matrix> A,
+                                   Eigen::Ref<Vector> g) const {}
 
     /**
      * @brief Returns the map that transforms the parameterisation of the
@@ -33,63 +38,38 @@ class FrictionConeModelAbstract {
      */
     virtual Matrix parameterisationToForceMap() const = 0;
 
-   protected:
-    ContactAbstract() : dimension_(0), task_dimension_(0) {}
-    ContactAbstract(const Size &dimension)
-        : dimension_(dimension), task_dimension_(dimension) {}
+    virtual Size numParameters() const = 0;
 
-    void setDimension(const Size &dimension) { dimension_ = dimension; }
+   protected:
+    FrictionConeModelAbstract() = default;
+    ~FrictionConeModelAbstract() = default;
 
    private:
-    Size dimension_;
     Real mu_;
 };
 
-// class FrictionConeModel : public FrictionConeModelAbstract {
-//    public:
-//     using SharedPtr = std::shared_ptr<LinearisedFrictionConeConstraint>;
-
-//     LinearisedFrictionConeModel(const Size &n) {}
-
-//     void toSOCPConstraint(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-//                         Eigen::Ref<Vector> lbA) override {
-
-//     }
-
-//     Matrix parameterisationToForceMap() const override {
-//         return Matrix3::Identity();
-//     }
-
-//    protected:
-//     ContactAbstract() : dimension_(0) {}
-//     ContactAbstract(const Size &dimension) : dimension_(dimension) {}
-
-//     void setDimension(const Size &dimension) { dimension_ = dimension; }
-
-//    private:
-//     Size dimension_;
-// };
-
 class LinearisedFrictionConeModel : public FrictionConeModelAbstract {
    public:
-    using SharedPtr = std::shared_ptr<LinearisedFrictionConeConstraint>;
+    using SharedPtr = std::shared_ptr<LinearisedFrictionConeModel>;
 
     LinearisedFrictionConeModel(const Size &n)
         : FrictionConeModelAbstract(), n_(n) {}
 
     Size numEdges() const { return n_; }
 
-    void toLPConstraint(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                        Eigen::Ref<Vector> lbA) override {
+    Size numLPConstraints() const override { return n_; }
+
+    void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
+                         Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
+                         Eigen::Ref<Vector> lbx) const override {
         // Unilaterality
-        A.row(0) << 0, 0, 1.0;
-        lbA(0) << 0.0;
-        ubA(0) << inf;
+        lbx[2] = 0.0;
+        ubx[2] = 1e9;
         // Edges
         Real theta = 0;
-        for (Size i = 1; i < n_ + 1; ++i) {
-            A.row(i) << cos(theta), sin(theta), -mu_ / sqrt(2.0);
-            lbA(i) = -inf;
+        for (Size i = 0; i < n_; ++i) {
+            A.row(i) << cos(theta), sin(theta), -getCoefficient() / sqrt(2.0);
+            lbA(i) = -1e9;
             ubA(i) = Real(0);
             theta += 2 * M_PI / n_;
         }
@@ -109,19 +89,24 @@ class LinearisedFrictionConeModel : public FrictionConeModelAbstract {
  * contact force is represented by the linear combination of its generators.
  *
  */
-class LinearisedFrictionConeGeneratorModel {
+class LinearisedFrictionConeGeneratorModel : public FrictionConeModelAbstract {
    public:
     using SharedPtr = std::shared_ptr<LinearisedFrictionConeGeneratorModel>;
 
-    LinearisedFrictionConeGeneratorModel(const Size &n) : n_(n) {
+    LinearisedFrictionConeGeneratorModel(const Size &n)
+        : FrictionConeModelAbstract(), n_(n) {
         assert(n >= 4 && "Need sufficient edges to approximate");
     }
 
-    void toLPConstraint(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                        Eigen::Ref<Vector> lbA) override {
-        A.setIdentity();
-        lbA.setZero();
-        ubA.setConstant(inf);
+    Size numEdges() const { return n_; }
+
+    Size numLPConstraints() const override { return 0; }
+
+    void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
+                         Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
+                         Eigen::Ref<Vector> lbx) const override {
+        lbx.setZero();
+        ubx.setConstant(1e9);
     }
 
     /**
@@ -149,11 +134,9 @@ class LinearisedFrictionConeGeneratorModel {
     }
 
    protected:
-    void setDimension(const Size &dimension) { dimension_ = dimension; }
-
    private:
-    Size dimension_;
+    Size n_;
 };
 
 // todo - wrench abstract
-};  // namespace osc
+}  // namespace osc

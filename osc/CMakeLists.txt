@@ -1,27 +1,24 @@
 find_package(Eigen3 3.3 REQUIRED)
 find_package(casadi REQUIRED)
 find_package(pinocchio REQUIRED)
-find_package(glog REQUIRED)
 
 # Collect source files
 SET(${PROJECT_NAME}_SOURCES
-dynamics.cpp
-se3.cpp
-default_formulation.cpp
-trajectory_reference.cpp
-tasks/centre_of_mass.cpp
-tasks/posture.cpp
-tasks/frame.cpp
-tasks/motion.cpp
-contacts/base.cpp
-contacts/contact_3d.cpp
+Problem.cpp
+QPSolver.cpp
+State.cpp
+tasks/Frame.cpp
+tasks/CentreOfMass.cpp
+tasks/Posture.cpp
+tasks/Damping.cpp
+
+contacts/Contact3D.cpp
 )
 
 SET(${PROJECT_NAME}_LIBRARIES
 Eigen3::Eigen
 pinocchio::pinocchio
 casadi::casadi
-glog
 )
 
 include(GNUInstallDirs)

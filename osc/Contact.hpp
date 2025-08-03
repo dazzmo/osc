@@ -7,9 +7,25 @@
 
 namespace osc {
 
-class ContactAbstract : public TaskAbstract {
+class ContactAbstract {
    public:
     using SharedPtr = std::shared_ptr<ContactAbstract>;
+
+    /**
+     * @brief Set the effective gain of the task
+     *
+     * @param gain
+     */
+    void setGain(const Real &gain) { gain_ = gain; }
+    const Real &gain() const { return gain_; }
+
+    const Vector &weighting() const { return weighting_; }
+    void setWeighting(const Eigen::Ref<Vector> &weighting) {
+        weighting_ = weighting;
+    }
+    void setWeighting(const Real &weighting) {
+        weighting_.setConstant(weighting);
+    }
 
     /**
      * @brief Set the surface normal of the contact point (within the world
@@ -20,8 +36,37 @@ class ContactAbstract : public TaskAbstract {
     void setSurfaceNormal(const Eigen::Vector3<Real> &normal) {
         normal_ = normal;
     }
+    const Vector3 &surfaceNormal() const { return normal_; }
 
     void setFrictionCoefficient(const Real &mu) { mu_ = mu; }
+    const Real &frictionCoefficient() { return mu_; }
+
+    /**
+     * @brief Computes the contact error and its rate.
+     *
+     * @param state
+     * @param e
+     */
+    virtual void computeError(const State &state, Eigen::Ref<Vector> e,
+                              Eigen::Ref<Vector> dot_e) const = 0;
+
+    /**
+     * @brief Computes the contact error Jacobian
+     *
+     * @param state
+     * @param jac
+     */
+    virtual void computeJacobian(const State &state,
+                                 Eigen::Ref<Matrix> jac) const = 0;
+    /**
+     * @brief Computes the task acceleration bias term, given as \gamma =
+     * \dot{J}(q) \dot{q}
+     *
+     * @param state
+     * @param jac
+     */
+    virtual void computeAccelerationBias(const State &state,
+                                         Eigen::Ref<Vector> bias) const = 0;
 
     /**
      * @brief Computes the contact jacobian that maps a world-frame force to the
@@ -31,83 +76,54 @@ class ContactAbstract : public TaskAbstract {
      * @param jac
      */
     virtual void computeContactJacobian(const State &state,
-                                        Eigen::Ref<Matrix> jacobian) = 0;
+                                        Eigen::Ref<Matrix> jacobian) const = 0;
 
-    /**
-     * @brief Computes the transform from the world to the contact surface frame
-     *
-     */
-    void worldToContactSurfaceTransform() {}
-
-    void toQPConstraints(const State &state, Eigen::Ref<Matrix> A,
-                         Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA,
-                         Eigen::Ref<Vector> ubx, Eigen::Ref<Vector> lbx) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
-
-        // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
-
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
-
-        // H = 2.0 * A.transpose() * A;
-        // g = A.transpose() * b;
-
-        // todo - Possibly include target force to reach
+    const FrictionConeModelAbstract::SharedPtr &frictionCone() const {
+        return friction_cone_;
     }
+
+    const String &frame() const { return frame_; }
+
     // todo - virtual casadi::Function toCasadiFunction() const = 0;
 
    protected:
-    ContactAbstract() : dimension_(0), task_dimension_(0) {}
-    ContactAbstract(const Size &dimension,
+    ContactAbstract() : frame_("") {}
+    ContactAbstract(const String &frame_, const Size &dimension,
                     const FrictionConeModelAbstract::SharedPtr &friction_cone)
-        : dimension_(dimension) {}
-
-    void setDimension(const Size &dimension) { dimension_ = dimension; }
+        : weighting_(Vector::Ones(dimension)), friction_cone_(friction_cone) {}
 
    private:
-    String frame_;
-    Vector3 normal_;
+    String frame_{""};
+
+    Real gain_{1.0};
+    Vector weighting_;
+
+    Real mu_{1.0};
+    Vector3 normal_{Vector3::UnitZ()};
+
+    FrictionConeModelAbstract::SharedPtr friction_cone_{nullptr};
 };
 
-class PointContact : public ContactAbstract {
-    static constexpr int DIMENSION = 3;
-
+template <typename _TargetType>
+class Contact : public ContactAbstract {
    public:
-    PointContact(const String &frame,
-                 FrictionConeModelAbstract::SharedPtr &friction_cone)
-        : ContactAbstract(DIMENSION, friction_cone) {}
+    using TargetType = _TargetType;
 
-    void computeError(const State &state, Eigen::Ref<Vector> e) override {
-        e = state.getTransformFrameToWorld(frame_).translation() - target_;
-    }
+    void setTarget(const TargetType &target) { target_ = target; }
+    virtual void setTargetFromState(const TargetType &target) = 0;
 
-    void computeJacobian(const State &state,
-                         Eigen::Ref<Matrix> jacobian) override {
-        jacobian = state.getFrameJacobian(state.getFrameIndex(frame_))
-                       .topRows<DIMENSION>();
-    }
+    const TargetType &getTarget() const { return target_; }
 
-    void computeAccelerationBias(const State &state,
-                                 Eigen::Ref<Matrix> bias) override {
-        bias = state.getClassicalFrameAcceleration(frame_).linear();
-    }
-
-    void computeContactJacobian(const State &state,
-                                Eigen::Ref<Matrix> jacobian) override {
-        jacobian =
-            state
-                .getFrameJacobian(state.getFrameIndex(frame_), pinocchio::WORLD)
-                .topRows<DIMENSION>();
-    }
+   protected:
+    Contact() {}
+    Contact(const String &frame, const Size &dimension,
+            const FrictionConeModelAbstract::SharedPtr &friction_cone)
+        : ContactAbstract(frame, dimension, friction_cone) {}
 
    private:
-    String &frame_;
-    Vector3 target_;
+    TargetType target_;
 };
 
 // todo - wrench contact
 
-};  // namespace osc
+}  // namespace osc

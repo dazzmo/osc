@@ -1,7 +1,5 @@
 #pragma once
 
-#include <pinocchio/algorithm/joint.hpp>
-
 #include "osc/Fwd.hpp"
 
 namespace osc {
@@ -18,12 +16,10 @@ class State {
     using Matrix3x = Eigen::Matrix<Real, 3, Eigen::Dynamic>;
     using Matrix6x = Eigen::Matrix<Real, 6, Eigen::Dynamic>;
 
-    State(const Model &model)
-        : model_(model),
-          data_(std::make_unique<ModelData>(model)),
-          q_(pinocchio::neutral(model)),
-          v_(Vector::Zero(model.nv)),
-          jacobian_(Matrix6x::Zero(6, model_.nv)) {}
+    State() = default;
+    ~State() = default;
+
+    State(const Model &model);
 
     Size nq() const { return model_.nq; }
     Size nv() const { return model_.nv; }
@@ -31,30 +27,41 @@ class State {
     const ConfigVectorType &q() const { return q_; }
     const TangentVectorType &v() const { return v_; }
 
+    const Model &model() const { return model_; }
     bool hasFloatingBase() const { return model_.names[0] == "root_link"; }
 
-    void update(const ConfigVectorType &q, const TangentVectorType &v) {}
+    void update(const ConfigVectorType &q, const TangentVectorType &v);
 
     pinocchio::JointIndex getJointIndex(const String &joint) const;
     pinocchio::FrameIndex getFrameIndex(const String &frame) const;
 
     SE3 getTransformFrameToWorld(const String &frame) const;
 
-    const Matrix6x &getJointJacobian(
-        const pinocchio::JointIndex &index,
+    const Matrix6x &computeJointJacobian(
+        const pinocchio::JointIndex &index) const;
+
+    const Matrix6x &computeFrameJacobian(
+        const pinocchio::FrameIndex &index,
         const pinocchio::ReferenceFrame &reference_frame =
             pinocchio::LOCAL) const;
 
-    const Matrix6x &getFrameJacobian(
+    Motion getFrameVelocity(const pinocchio::FrameIndex &index,
+                            const pinocchio::ReferenceFrame &reference_frame =
+                                pinocchio::LOCAL) const;
+
+    Motion getFrameClassicalAcceleration(
         const pinocchio::FrameIndex &index,
         const pinocchio::ReferenceFrame &reference_frame =
             pinocchio::LOCAL) const;
 
     const Vector3 &getCentreOfMass() const;
+    const Vector3 &getCentreOfMassVelocity() const;
+    const Vector3 &getCentreOfMassAcceleration() const;
     const Matrix3x &computeCentreOfMassJacobian() const;
 
     const Matrix &getInertiaMatrix() const;
-    const Matrix &getCoriolisAndGravitationalBias() const;
+    Vector computeNonlinearEffects(const Eigen::Ref<const Vector> &q,
+                                   const Eigen::Ref<const Vector> &v) const;
 
    private:
     const Model &model_;
