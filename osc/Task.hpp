@@ -19,6 +19,14 @@ class TaskAbstract {
     Size getDimension() const { return dimension_; }
     Size getTaskDimension() const { return task_dimension_; }
 
+    /**
+     * @brief Set the effective gain of the task
+     * 
+     * @param gain 
+     */
+    void setGain(const Real &gain) { gain_ = gain; }
+    const Real &getGain() const { return gain_; }
+
     const Vector &getWeighting() { return weighting_; }
     void setWeighting(const Eigen::Ref<Vector> &weighting) {
         weighting_ = weighting;
@@ -81,10 +89,28 @@ class TaskAbstract {
         // const Vector b = bias - ad;
         // // Compute weighting
 
+        // H = gain_ * 2.0 * A.transpose() * A;
+        // g = gain_ *  A.transpose() * b;
+    }
+
+        void toQPConstraint(const State &state, Eigen::Ref<Matrix> A,
+                         Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA,
+                         Eigen::Ref<Vector> ubx, Eigen::Ref<Vector> lbx) {
+        const Vector e = computeError(state);
+        const Matrix J = computeJacobian(state);
+
+        // Compute the desired task acceleration to minimise the error
+        // const Vector ad = computeDesiredTaskAcceleration(e);
+
+        // const Matrix &A = J;
+        // const Vector b = bias - ad;
+        // // Compute weighting
+
         // H = 2.0 * A.transpose() * A;
         // g = A.transpose() * b;
     }
-    // todo - virtual casadi::Function toCasadiFunction() const = 0;
+
+    // todo - virtual casadi::Function toCasadiFunction(const Model &model) const = 0;
 
     void setErrorPD(const Vector &Kp, const Vector &Kd) {}
 
@@ -117,5 +143,17 @@ class Task : public TaskAbstract {
    private:
     TargetType target_;
 };
+
+template<typename _TargetType>
+class MotionTask : public TaskAbstract {
+
+};
+
+template<typename _TargetType>
+class ActuationTask : public TaskAbstract {
+
+};
+
+
 
 };  // namespace osc

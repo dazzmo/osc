@@ -1,73 +1,47 @@
 #pragma once
 
+#include "osc/FrictionConeModel.hpp"
 #include "osc/Fwd.hpp"
 #include "osc/State.hpp"
+#include "osc/Task.hpp"
 
 namespace osc {
 
-class ContactAbstract {
+class ContactAbstract : public TaskAbstract {
    public:
-    using SharedPtr = std::shared_ptr<TaskAbstract>;
-    /**
-     * @brief Returns the dimension of the task.
-     * @note This is the dimension of the task error, not necessarily the
-     * dimension of the task. For the dimension of the task see
-     * getTaskDimension()
-     *
-     * @return Size
-     */
-    Size getDimension() const { return dimension_; }
+    using SharedPtr = std::shared_ptr<ContactAbstract>;
 
-    const Vector &getWeighting() { return weighting_; }
-    void setWeighting(const Eigen::Ref<Vector> &weighting) {
-        weighting_ = weighting;
-    }
-    void setWeighting(const Real &weighting) {
-        weighting_.setConstant(weighting);
+    /**
+     * @brief Set the surface normal of the contact point (within the world
+     * frame)
+     *
+     * @param normal
+     */
+    void setSurfaceNormal(const Eigen::Vector3<Real> &normal) {
+        normal_ = normal;
     }
 
-    /**
-     * @brief Computes the task error
-     *
-     * @param state
-     * @param e
-     */
-    virtual void computeError(const State &state, Eigen::Ref<Vector> e) = 0;
+    void setFrictionCoefficient(const Real &mu) { mu_ = mu; }
 
     /**
-     * @brief Computes the task Jacobian
+     * @brief Computes the contact jacobian that maps a world-frame force to the
+     * generalised inputs
      *
      * @param state
      * @param jac
      */
-    virtual void computeJacobian(const State &state,
-                                 Eigen::Ref<Matrix> jac) = 0;
+    virtual void computeContactJacobian(const State &state,
+                                        Eigen::Ref<Matrix> jacobian) = 0;
+
     /**
-     * @brief Computes the task acceleration bias term, given as \gamma =
-     * \dot{J}(q) \dot{q}
+     * @brief Computes the transform from the world to the contact surface frame
      *
-     * @param state
-     * @param jac
      */
-    virtual void computeAccelerationBias(const State &state,
-                                         Eigen::Ref<Matrix> bias) = 0;
+    void worldToContactSurfaceTransform() {}
 
-    Vector computeError(const State &state) {
-        Vector e(getDimension());
-        jac.setZero();
-        computeError(state, e);
-        return e;
-    }
-
-    Matrix computeJacobian(const State &state) {
-        Matrix jac(getDimension(), state.nv());
-        jac.setZero();
-        computeJacobian(state, jac);
-        return jac;
-    }
-
-    void toQPObjective(const State &state, Eigen::Ref<Matrix> H,
-                       Eigen::Ref<Vector> g) {
+    void toQPConstraints(const State &state, Eigen::Ref<Matrix> A,
+                         Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA,
+                         Eigen::Ref<Vector> ubx, Eigen::Ref<Vector> lbx) {
         const Vector e = computeError(state);
         const Matrix J = computeJacobian(state);
 
@@ -80,55 +54,60 @@ class ContactAbstract {
 
         // H = 2.0 * A.transpose() * A;
         // g = A.transpose() * b;
-    }
 
-    void toQPConstraint(const State &state, Eigen::Ref<Matrix> A,
-                        Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
-
-        // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
-
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
-
-        // H = 2.0 * A.transpose() * A;
-        // g = A.transpose() * b;
+        // todo - Possibly include target force to reach
     }
     // todo - virtual casadi::Function toCasadiFunction() const = 0;
 
-    void setErrorPD(const Vector &Kp, const Vector &Kd) {}
-
    protected:
     ContactAbstract() : dimension_(0), task_dimension_(0) {}
-    ContactAbstract(const Size &dimension)
-        : dimension_(dimension), task_dimension_(dimension) {}
+    ContactAbstract(const Size &dimension,
+                    const FrictionConeModelAbstract::SharedPtr &friction_cone)
+        : dimension_(dimension) {}
 
     void setDimension(const Size &dimension) { dimension_ = dimension; }
-    void setTaskDimension(const Size &dimension) {
-        task_dimension_ = dimension;
+
+   private:
+    String frame_;
+    Vector3 normal_;
+};
+
+class PointContact : public ContactAbstract {
+    static constexpr int DIMENSION = 3;
+
+   public:
+    PointContact(const String &frame,
+                 FrictionConeModelAbstract::SharedPtr &friction_cone)
+        : ContactAbstract(DIMENSION, friction_cone) {}
+
+    void computeError(const State &state, Eigen::Ref<Vector> e) override {
+        e = state.getTransformFrameToWorld(frame_).translation() - target_;
+    }
+
+    void computeJacobian(const State &state,
+                         Eigen::Ref<Matrix> jacobian) override {
+        jacobian = state.getFrameJacobian(state.getFrameIndex(frame_))
+                       .topRows<DIMENSION>();
+    }
+
+    void computeAccelerationBias(const State &state,
+                                 Eigen::Ref<Matrix> bias) override {
+        bias = state.getClassicalFrameAcceleration(frame_).linear();
+    }
+
+    void computeContactJacobian(const State &state,
+                                Eigen::Ref<Matrix> jacobian) override {
+        jacobian =
+            state
+                .getFrameJacobian(state.getFrameIndex(frame_), pinocchio::WORLD)
+                .topRows<DIMENSION>();
     }
 
    private:
-    Size dimension_;
-    Size task_dimension_;
-    Vector weighting_;
+    String &frame_;
+    Vector3 target_;
 };
 
-template <typename _TargetType>
-class Task : public ContactAbstract {
-   public:
-    using TargetType = _TargetType;
-
-    Task(const VariableVector &variables) {}
-
-    void setTarget(const TargetType &target) { target_ = target; }
-    const TargetType &getTarget() const { return target_; }
-
-   private:
-    TargetType target_;
-};
+// todo - wrench contact
 
 };  // namespace osc

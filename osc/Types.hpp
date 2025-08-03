@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Eigen/Core>
-
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 
@@ -28,5 +27,11 @@ using MatrixX = Eigen::MatrixX<T>;
 
 using Vector = VectorX<Real>;
 using Matrix = MatrixX<Real>;
+
+using Vector3 = Vector3<Real>;
+using Matrix3 = Matrix3<Real>;
+
+using Vector6 = Eigen::VectorX<Real, 6>;
+using Matrix6 = Eigen::MatrixX<Real, 6, 6>;
 
 }  // namespace osc

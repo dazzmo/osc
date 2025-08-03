@@ -21,4 +21,8 @@ class Variable {
     }
 };
 
+using VariableVector = VectorX<Variable>;
+
+void createVariableVector(const String& name, const Size& n) {}
+
 }  // namespace osc

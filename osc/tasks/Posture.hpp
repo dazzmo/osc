@@ -9,7 +9,7 @@ namespace osc {
  * @brief Task for tracking a specified frame
  *
  */
-class FrameTask : public MotionTask<pinocchio::SE3> {
+class PostureTask : public MotionTask<Vector> {
    public:
     void computeError(const State &state, Eigen::Ref<Vector> e) override;
 

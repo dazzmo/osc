@@ -10,6 +10,14 @@ class ConstraintAbstract {
     Size getDimension() const { return dimension_; }
 
     /**
+     * @brief Set the effective gain of the task
+     *
+     * @param gain
+     */
+    void setGain(const Real &gain) { gain_ = gain; }
+    const Real &getGain() const { return gain_; }
+
+    /**
      * @brief Computes the task error
      *
      * @param state
@@ -40,21 +48,7 @@ class ConstraintAbstract {
         return jac;
     }
 
-    void toQPConstraint(const State &state, Eigen::Ref<Matrix> A,
-                        Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA) {
-        const Vector e = computeError(state);
-        const Matrix J = computeJacobian(state);
 
-        // Compute the desired task acceleration to minimise the error
-        // const Vector ad = computeDesiredTaskAcceleration(e);
-
-        // const Matrix &A = J;
-        // const Vector b = bias - ad;
-        // // Compute weighting
-
-        // H = 2.0 * A.transpose() * A;
-        // g = A.transpose() * b;
-    }
     // todo - virtual casadi::Function toCasadiFunction() const = 0;
 
    protected:
@@ -65,6 +59,7 @@ class ConstraintAbstract {
 
    private:
     Size dimension_;
+    Real gain_;
 };
 
 };  // namespace osc

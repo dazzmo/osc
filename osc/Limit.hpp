@@ -10,6 +10,14 @@ class LimitAbstract {
     Size getDimension() const { return dimension_; }
 
     /**
+     * @brief Set the effective gain of the task
+     *
+     * @param gain
+     */
+    void setGain(const Real &gain) { gain_ = gain; }
+    const Real &getGain() const { return gain_; }
+
+    /**
      * @brief Computes the task error
      *
      * @param state
@@ -40,8 +48,25 @@ class LimitAbstract {
         return jac;
     }
 
-    void toQPLimit(const State &state, Eigen::Ref<Matrix> A,
-                        Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA) {
+    void toQPObjective(const State &state, Eigen::Ref<Matrix> H,
+                       Eigen::Ref<Vector> g) {
+        const Vector e = computeError(state);
+        const Matrix J = computeJacobian(state);
+
+        // Compute the desired task acceleration to minimise the error
+        // const Vector ad = computeDesiredTaskAcceleration(e);
+
+        // const Matrix &A = J;
+        // const Vector b = bias - ad;
+        // // Compute weighting
+
+        // H = 2.0 * A.transpose() * A;
+        // g = A.transpose() * b;
+    }
+
+    void toQPConstraint(const State &state, Eigen::Ref<Matrix> A,
+                        Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbA,
+                        Eigen::Ref<Vector> ubx, Eigen::Ref<Vector> lbx) {
         const Vector e = computeError(state);
         const Matrix J = computeJacobian(state);
 
@@ -66,5 +91,11 @@ class LimitAbstract {
    private:
     Size dimension_;
 };
+
+template <typename T>
+class MotionLimit {};
+
+template <typaname T>
+class ActuationLimit {};
 
 };  // namespace osc

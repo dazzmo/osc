@@ -17,6 +17,8 @@ void State::update(const ConfigVectorType &q, const TangentVectorType &v) {
     v_ = v;
     pinocchio::framesForwardKinematics(model_, *data_, q, v);
     pinocchio::computeJointJacobians(model_, *data_);
+    pinocchio::crba(model_, *data_, q);
+    pinocchio::rnea(model_, *data_, q, v);
 }
 
 pinocchio::JointIndex State::getJointIndex(const String &joint) const {
@@ -50,12 +52,18 @@ const State::Matrix6x &State::getFrameJacobian(
     return jacobian_;
 }
 
-const Eigen::Vector3<Real> &State::getCentreOfMass() const {
+const Vector3 &State::getCentreOfMass() const {
     return pinocchio::centerOfMass(model_, *data_, false);
 }
 
-Matrix3x State::computeCentreOfMassJacobian() const {
+const Matrix3x &State::computeCentreOfMassJacobian() const {
     return pinocchio::jacobianCenterOfMass(model_, *data_, false);
+}
+
+const Matrix &State::getInertiaMatrix() const { return data_->M; }
+
+const Matrix &State::getCoriolisAndGravitationalBias() const {
+    return data_->tau;
 }
 
 }  // namespace osc

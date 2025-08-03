@@ -31,6 +31,8 @@ class State {
     const ConfigVectorType &q() const { return q_; }
     const TangentVectorType &v() const { return v_; }
 
+    bool hasFloatingBase() const { return model_.names[0] == "root_link"; }
+
     void update(const ConfigVectorType &q, const TangentVectorType &v) {}
 
     pinocchio::JointIndex getJointIndex(const String &joint) const;
@@ -48,11 +50,11 @@ class State {
         const pinocchio::ReferenceFrame &reference_frame =
             pinocchio::LOCAL) const;
 
-    const Eigen::Vector3<Real> &getCentreOfMass() const;
-    Matrix computeCentreOfMassJacobian() const;
+    const Vector3 &getCentreOfMass() const;
+    const Matrix3x &computeCentreOfMassJacobian() const;
 
-    Matrix inertiaMatrix() const;
-    Matrix inertiaMatrix() const;
+    const Matrix &getInertiaMatrix() const;
+    const Matrix &getCoriolisAndGravitationalBias() const;
 
    private:
     const Model &model_;
