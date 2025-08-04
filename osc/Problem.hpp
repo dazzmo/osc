@@ -2,7 +2,7 @@
 
 #include "osc/Constraint.hpp"
 #include "osc/Limit.hpp"
-#include "osc/QPData.hpp"
+#include "osc/ConicData.hpp"
 #include "osc/QPSolver.hpp"
 #include "osc/State.hpp"
 #include "osc/Contact.hpp"

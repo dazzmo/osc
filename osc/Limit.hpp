@@ -56,14 +56,4 @@ class LimitAbstract {
     Real gain_;
 };
 
-class MotionLimit : public LimitAbstract {
-   public:
-    MotionLimit(const Size &m) : LimitAbstract(m) {}
-};
-
-class ActuationLimit : public LimitAbstract {
-   public:
-    ActuationLimit(const Size &m) : LimitAbstract(m) {}
-};
-
 }  // namespace osc

@@ -62,11 +62,11 @@ class TaskAbstract {
     virtual void computeAccelerationBias(const State &state,
                                          Eigen::Ref<Vector> bias) const = 0;
 
-    void toQPObjective(const State &state, Eigen::Ref<Matrix> H,
+    void addToQPObjective(const State &state, Eigen::Ref<Matrix> H,
                        Eigen::Ref<Vector> g) const {
-        Vector e, dot_e, bias;
+        Vector e(getDimension()), dot_e(getDimension()), bias(getDimension());
         computeError(state, e, dot_e);
-        Matrix J, W;
+        Matrix J(getDimension(), H.rows()), W(getDimension(), getDimension());
         computeJacobian(state, J);
         computeAccelerationBias(state, bias);
         W = weighting().asDiagonal();
@@ -78,8 +78,8 @@ class TaskAbstract {
         const Vector b = W * (bias - xacc);
 
         // Compute weighting
-        H = gain() * 2.0 * A.transpose() * A;
-        g = gain() * A.transpose() * b;
+        H += gain() * 2.0 * A.transpose() * A;
+        g += gain() * A.transpose() * b;
     }
 
     // todo - virtual casadi::Function toCasadiFunction(const Model &model)

@@ -57,11 +57,16 @@ class LinearisedFrictionConeModel : public FrictionConeModelAbstract {
 
     Size numEdges() const { return n_; }
 
+    Size numParameters() const { return 3; }
+
     Size numLPConstraints() const override { return n_; }
 
     void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
                          Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
                          Eigen::Ref<Vector> lbx) const override {
+        std::cout << A << std::endl;
+        std::cout << ubA << std::endl;
+        std::cout << lbA << std::endl;
         // Unilaterality
         lbx[2] = 0.0;
         ubx[2] = 1e9;

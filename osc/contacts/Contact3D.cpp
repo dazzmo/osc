@@ -28,4 +28,8 @@ void Contact3D::computeContactJacobian(const State &state,
                    .topRows<DIMENSION>();
 }
 
+void Contact3D::setTargetFromState(const State &state) {
+    setTarget(state.getTransformFrameToWorld(frame()).translation());
+}
+
 }  // namespace osc

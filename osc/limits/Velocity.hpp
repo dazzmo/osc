@@ -4,12 +4,9 @@
 
 namespace osc {
 
-class VelocityLimit : public MotionLimit {
+class VelocityLimit : public LimitAbstract {
    public:
-    VelocityLimit(const Eigen::Ref<Vector> &lb, const Eigen::Ref<Vector> &ub)
-        : MotionLimit(lb.size()) {
-        assert(lb.size() == ub.size());
-    }
+    VelocityLimit(const State &state) : LimitAbstract(state.nv()) {}
 
     void computeLimits(const State &state, const Real &dt,
                        Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubA,

@@ -43,6 +43,15 @@ bool OSCProgram::computeProblemSize(const State &state) {
     cidx[CON_LIMITS] = cidx[CON_FRICTION] + csz[CON_FRICTION];
     cidx[VAR_HOLONOMIC] = cidx[VAR_HOLONOMIC] + csz[CON_LIMITS];
 
+    for (const auto &sz : vsz) nx += sz;
+    for (const auto &sz : csz) nc += sz;
+
+    std::cout << "nx = " << nx << std::endl;
+    std::cout << "nc = " << nc << std::endl;
+
+    num_variables_ = nx;
+    num_constraints_ = nc;
+
     return (nx != nx_previous) && (nc != nc_previous);
 }
 
@@ -103,12 +112,16 @@ void OSCProgram::schedule(const Real &t) {
 void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     // Manage tasks and constraints
     schedule(t);
+    std::cout << "Schedule" << std::endl;
     if (computeProblemSize(state)) {
         // Create new problem with appropriate size
         conic_data_.reset();
         conic_data_ =
             std::make_unique<ConicData>(num_variables_, num_constraints_);
     }
+    std::cout << "Problem Size" << std::endl;
+
+    // conic_data_->setZero();
 
     // Tracking index for variables in for loops
     Index idx_v = 0;
@@ -117,20 +130,24 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
 
     // For all tasks and constraints, add to program
     for (const auto &task : motion_tasks_) {
-        auto Hi = conic_data_->H.block(vidx[VAR_QACC], vidx[VAR_QACC],
-                                       vsz[VAR_QACC], vsz[VAR_QACC]);
-        auto gi = conic_data_->g.segment(vidx[VAR_QACC], vsz[VAR_QACC]);
+        Eigen::Ref<Matrix> Hi = conic_data_->H.block(
+            vidx[VAR_QACC], vidx[VAR_QACC], vsz[VAR_QACC], vsz[VAR_QACC]);
+        Eigen::Ref<Vector> gi =
+            conic_data_->g.segment(vidx[VAR_QACC], vsz[VAR_QACC]);
 
-        task.data->toQPObjective(state, Hi, gi);
+        task.data->addToQPObjective(state, Hi, gi);
     }
+    std::cout << "Motion tasks" << std::endl;
 
     for (const auto &task : actuation_tasks_) {
         auto Hi = conic_data_->H.block(vidx[VAR_CTRL], vidx[VAR_CTRL],
                                        vsz[VAR_CTRL], vsz[VAR_CTRL]);
         auto gi = conic_data_->g.segment(vidx[VAR_CTRL], vsz[VAR_CTRL]);
 
-        task.data->toQPObjective(state, Hi, gi);
+        task.data->addToQPObjective(state, Hi, gi);
     }
+
+    std::cout << "Actuation tasks" << std::endl;
 
     // Limits
     idx_c = 0;
@@ -147,6 +164,8 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         limit.data->toLPConstraints(state, dt, A, lbA, ubA, lbx, ubx);
         idx_c += m;
     }
+    std::cout << "Motion limits" << std::endl;
+
     idx_c = 0;
     for (const auto &limit : actuation_limits_) {
         const Size m = limit.data->numLPConstraints();
@@ -161,6 +180,7 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         limit.data->toLPConstraints(state, dt, A, lbA, ubA, lbx, ubx);
         idx_c += m;
     }
+    std::cout << "Actuation limits" << std::endl;
 
     // Dynamics constraint
     conic_data_->A.block(cidx[CON_DYNAMICS], vidx[VAR_QACC], csz[CON_DYNAMICS],
@@ -176,6 +196,8 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         conic_data_->A.block(cidx[CON_DYNAMICS], vidx[VAR_CTRL],
                              csz[CON_DYNAMICS], vsz[VAR_CTRL]) -= Bi;
     }
+
+    std::cout << "Dynamics" << std::endl;
 
     // Barriers
 
@@ -197,6 +219,7 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         idx_v += n;
         idx_c += m;
     }
+    std::cout << "Constraints" << std::endl;
 
     // Contacts
     idx_v = 0;
@@ -206,10 +229,10 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         const Size m = contact.data->frictionCone()->numLPConstraints();
 
         // Dynamics
-        auto A =
-            conic_data_->A.block(cidx[CON_DYNAMICS], vidx[VAR_CONTACT] + idx_c,
+        Eigen::Ref<Matrix> A =
+            conic_data_->A.block(cidx[CON_DYNAMICS], vidx[VAR_CONTACT] + idx_v,
                                  csz[CON_DYNAMICS], n);
-        Matrix J;
+        Matrix J(contact.data->getDimension(), state.nv());
         contact.data->computeContactJacobian(state, J);
         J = contact.data->frictionCone()
                 ->parameterisationToForceMap()
@@ -218,28 +241,29 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         A -= J.transpose();
 
         // Friction cones
-        A = conic_data_->A.block(cidx[CON_FRICTION] + idx_c, vidx[VAR_QACC], m,
-                                 vsz[VAR_QACC]);
+        Eigen::Ref<Matrix> Af = conic_data_->A.block(
+            cidx[CON_FRICTION] + idx_c, vidx[VAR_CONTACT] + idx_v, m, n);
         auto lbA = conic_data_->lbA.segment(cidx[CON_FRICTION] + idx_c, m);
         auto ubA = conic_data_->ubA.segment(cidx[CON_FRICTION] + idx_c, m);
         auto lbx = conic_data_->lbx.segment(vidx[VAR_CONTACT] + idx_v, n);
         auto ubx = conic_data_->ubx.segment(vidx[VAR_CONTACT] + idx_v, n);
-        contact.data->frictionCone()->toLPConstraints(A, lbA, ubA, lbx, ubx);
+        contact.data->frictionCone()->toLPConstraints(Af, lbA, ubA, lbx, ubx);
 
         // Objective
         auto Hi = conic_data_->H.block(vidx[VAR_QACC], vidx[VAR_QACC],
                                        vsz[VAR_QACC], vsz[VAR_QACC]);
         auto gi = conic_data_->g.segment(vidx[VAR_QACC], vsz[VAR_QACC]);
-        // contact.data->toQPObjective(state, Hi, gi);
+
+        // contact.data->addToQPObjective(state, Hi, gi);
 
         idx_c += m;
         idx_v += n;
     }
 
-    // Solve with selected QP solver
-    qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
-                      conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
-                      conic_data_->lbx);
+    // // Solve with selected QP solver
+    // qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
+    //                   conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
+    //                   conic_data_->lbx);
 }
 
 }  // namespace osc

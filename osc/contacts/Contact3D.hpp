@@ -8,10 +8,13 @@ class Contact3D : public Contact<Vector3> {
 
    public:
     Contact3D(const String &frame,
-                 FrictionConeModelAbstract::SharedPtr &friction_cone)
+              const FrictionConeModelAbstract::SharedPtr &friction_cone)
         : Contact<Vector3>(frame, DIMENSION, friction_cone) {}
 
-    void computeError(const State &state, Eigen::Ref<Vector> e, Eigen::Ref<Vector> dot_e) const override;
+    Size getDimension() const override { return DIMENSION; }
+
+    void computeError(const State &state, Eigen::Ref<Vector> e,
+                      Eigen::Ref<Vector> dot_e) const override;
 
     void computeJacobian(const State &state,
                          Eigen::Ref<Matrix> jacobian) const override;
@@ -21,6 +24,8 @@ class Contact3D : public Contact<Vector3> {
 
     void computeContactJacobian(const State &state,
                                 Eigen::Ref<Matrix> jacobian) const override;
+
+    void setTargetFromState(const State &state);
 
    private:
 };

@@ -11,6 +11,8 @@ class ContactAbstract {
    public:
     using SharedPtr = std::shared_ptr<ContactAbstract>;
 
+    virtual Size getDimension() const = 0;
+
     /**
      * @brief Set the effective gain of the task
      *
@@ -88,9 +90,11 @@ class ContactAbstract {
 
    protected:
     ContactAbstract() : frame_("") {}
-    ContactAbstract(const String &frame_, const Size &dimension,
+    ContactAbstract(const String &frame, const Size &dimension,
                     const FrictionConeModelAbstract::SharedPtr &friction_cone)
-        : weighting_(Vector::Ones(dimension)), friction_cone_(friction_cone) {}
+        : frame_(frame),
+          weighting_(Vector::Ones(dimension)),
+          friction_cone_(friction_cone) {}
 
    private:
     String frame_{""};
@@ -110,7 +114,7 @@ class Contact : public ContactAbstract {
     using TargetType = _TargetType;
 
     void setTarget(const TargetType &target) { target_ = target; }
-    virtual void setTargetFromState(const TargetType &target) = 0;
+    virtual void setTargetFromState(const State &state) = 0;
 
     const TargetType &getTarget() const { return target_; }
 
