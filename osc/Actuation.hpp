@@ -27,10 +27,11 @@ class ActuationAbstract {
      */
     Size numOutputs() const { return n_out_; }
 
-    virtual void compute(const State &state, const Eigen::Ref<Vector> &u) = 0;
+    virtual Vector compute(const State &state,
+                           const Eigen::Ref<const Vector> &u) const = 0;
 
     virtual void computeJacobian(const State &state,
-                                 Eigen::Ref<Matrix> jac) = 0;
+                                 Eigen::Ref<Matrix> jac) const = 0;
 
    protected:
     ActuationAbstract(const Size &n_in, const Size &n_out)

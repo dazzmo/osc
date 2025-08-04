@@ -7,27 +7,9 @@
 
 namespace osc {
 
-class ContactAbstract {
+class ContactAbstract : public TaskAbstract {
    public:
     using SharedPtr = std::shared_ptr<ContactAbstract>;
-
-    virtual Size getDimension() const = 0;
-
-    /**
-     * @brief Set the effective gain of the task
-     *
-     * @param gain
-     */
-    void setGain(const Real &gain) { gain_ = gain; }
-    const Real &gain() const { return gain_; }
-
-    const Vector &weighting() const { return weighting_; }
-    void setWeighting(const Eigen::Ref<Vector> &weighting) {
-        weighting_ = weighting;
-    }
-    void setWeighting(const Real &weighting) {
-        weighting_.setConstant(weighting);
-    }
 
     /**
      * @brief Set the surface normal of the contact point (within the world
@@ -42,33 +24,6 @@ class ContactAbstract {
 
     void setFrictionCoefficient(const Real &mu) { mu_ = mu; }
     const Real &frictionCoefficient() { return mu_; }
-
-    /**
-     * @brief Computes the contact error and its rate.
-     *
-     * @param state
-     * @param e
-     */
-    virtual void computeError(const State &state, Eigen::Ref<Vector> e,
-                              Eigen::Ref<Vector> dot_e) const = 0;
-
-    /**
-     * @brief Computes the contact error Jacobian
-     *
-     * @param state
-     * @param jac
-     */
-    virtual void computeJacobian(const State &state,
-                                 Eigen::Ref<Matrix> jac) const = 0;
-    /**
-     * @brief Computes the task acceleration bias term, given as \gamma =
-     * \dot{J}(q) \dot{q}
-     *
-     * @param state
-     * @param jac
-     */
-    virtual void computeAccelerationBias(const State &state,
-                                         Eigen::Ref<Vector> bias) const = 0;
 
     /**
      * @brief Computes the contact jacobian that maps a world-frame force to the
@@ -92,15 +47,12 @@ class ContactAbstract {
     ContactAbstract() : frame_("") {}
     ContactAbstract(const String &frame, const Size &dimension,
                     const FrictionConeModelAbstract::SharedPtr &friction_cone)
-        : frame_(frame),
-          weighting_(Vector::Ones(dimension)),
+        : TaskAbstract(dimension),
+          frame_(frame),
           friction_cone_(friction_cone) {}
 
    private:
     String frame_{""};
-
-    Real gain_{1.0};
-    Vector weighting_;
 
     Real mu_{1.0};
     Vector3 normal_{Vector3::UnitZ()};

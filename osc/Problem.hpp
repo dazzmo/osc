@@ -1,12 +1,12 @@
 #pragma once
 
-#include "osc/Constraint.hpp"
-#include "osc/Limit.hpp"
+#include "osc/Actuation.hpp"
 #include "osc/ConicData.hpp"
+#include "osc/Constraint.hpp"
+#include "osc/Contact.hpp"
+#include "osc/Limit.hpp"
 #include "osc/QPSolver.hpp"
 #include "osc/State.hpp"
-#include "osc/Contact.hpp"
-#include "osc/Actuation.hpp"
 #include "osc/Task.hpp"
 
 namespace osc {
@@ -92,6 +92,13 @@ class OSCProgram {
               const QPSolver::Options &opts = {});
 
     /**
+     * @brief A
+     *
+     * @param actuation
+     */
+    void addActuation(const ActuationAbstract::SharedPtr &actuation);
+
+    /**
      * @brief Add a motion task to the problem that can be represented in the
      * form
      * \ddot{x} = J \ddot{q} + \dot{J} \dot{q}
@@ -127,6 +134,9 @@ class OSCProgram {
     void addHolonomicConstraint(const ConstraintAbstract::SharedPtr &constraint,
                                 const Real &t, const Real &duration = 0);
 
+    void removeContact(const ContactAbstract::SharedPtr &contact, const Real &t,
+                       const Real &duration = 0);
+
     template <typename Binding>
     void scheduleBindings(const Real &t, std::vector<Binding> &bindings) {
         for (auto it = bindings.begin(); it != bindings.end();) {
@@ -135,28 +145,34 @@ class OSCProgram {
                 // Evaluate the task as normal
             }
 
-            if (it->action == BindingAction::ADD && t >= it->t_action) {
-                // Add task at full strength
-                it->action = BindingAction::NONE;
-            } else {
-                // Introduce the task/constraint at a linear rate
-                const Real &t0 = it->t_initial;
-                const Real &ta = it->t_action;
-                const Real tau = (t - t0) / (ta - t0);
-                it->data->setGain(tau);
+            if (it->action == BindingAction::ADD) {
+                if (t >= it->t_action) {
+                    // Add task at full strength
+                    it->action = BindingAction::NONE;
+                } else {
+                    // Introduce the task/constraint at a linear rate
+                    const Real &t0 = it->t_initial;
+                    const Real &ta = it->t_action;
+
+                    const Real tau = std::max(0.0, (t - t0) / (ta - t0));
+                    it->data->setGain(tau);
+                }
             }
 
-            if (it->action == BindingAction::REMOVE && t >= it->t_action) {
-                // Remove the it
-                it = bindings.erase(it);
-                continue;
-            } else {
-                // Reduce the task/constraint at a linear rate
-                const Real &t0 = it->t_initial;
-                const Real &ta = it->t_action;
-                const Real tau = (t - t0) / (ta - t0);
-                it->data->setGain(1.0 - tau);
+            if (it->action == BindingAction::REMOVE) {
+                if (t >= it->t_action) {
+                    // Remove the it
+                    it = bindings.erase(it);
+                    continue;
+                } else {
+                    // Reduce the task/constraint at a linear rate
+                    const Real &t0 = it->t_initial;
+                    const Real &ta = it->t_action;
+                    const Real tau = (t - t0) / (ta - t0);
+                    it->data->setGain(1.0 - tau);
+                }
             }
+
             ++it;
         }
     }
@@ -165,6 +181,8 @@ class OSCProgram {
     void solve(const Real &t, const State &state, const Real &dt);
 
    private:
+    /// @brief Number of inputs
+    Size nu_;
     std::vector<TaskBinding> motion_tasks_;
     std::vector<TaskBinding> actuation_tasks_;
 

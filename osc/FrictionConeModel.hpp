@@ -21,9 +21,9 @@ class FrictionConeModelAbstract {
 
     virtual Size numLPConstraints() const { return 0; }
 
-    virtual void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                                 Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
-                                 Eigen::Ref<Vector> lbx) const {}
+    virtual void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> lbA,
+                                 Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbx,
+                                 Eigen::Ref<Vector> ubx) const {}
 
     virtual Size numSOCPConstraints() const { return 0; }
 
@@ -61,14 +61,12 @@ class LinearisedFrictionConeModel : public FrictionConeModelAbstract {
 
     Size numLPConstraints() const override { return n_; }
 
-    void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                         Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
-                         Eigen::Ref<Vector> lbx) const override {
-        std::cout << A << std::endl;
-        std::cout << ubA << std::endl;
-        std::cout << lbA << std::endl;
+    void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> lbA,
+                         Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbx,
+                         Eigen::Ref<Vector> ubx) const override {
         // Unilaterality
         lbx[2] = 0.0;
+        // fixme - Add a define
         ubx[2] = 1e9;
         // Edges
         Real theta = 0;
@@ -107,9 +105,9 @@ class LinearisedFrictionConeGeneratorModel : public FrictionConeModelAbstract {
 
     Size numLPConstraints() const override { return 0; }
 
-    void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                         Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
-                         Eigen::Ref<Vector> lbx) const override {
+    void toLPConstraints(Eigen::Ref<Matrix> A, Eigen::Ref<Vector> lbA,
+                         Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbx,
+                         Eigen::Ref<Vector> ubx) const override {
         lbx.setZero();
         ubx.setConstant(1e9);
     }

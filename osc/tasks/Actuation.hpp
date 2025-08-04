@@ -13,7 +13,7 @@ class MinimiseActuationTask : public ActuationTask<Vector> {
 
     void compute(const model_t &model, data_t &data, const vector_t &q,
                  const vector_t &v) override {
-        compute_jacobian(model, data, q, v);
+        computeJacobian(model, data, q, v);
     }
 
     void computeJacobian(const model_t &model, data_t &data, const vector_t &q,

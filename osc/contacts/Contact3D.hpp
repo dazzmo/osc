@@ -11,8 +11,6 @@ class Contact3D : public Contact<Vector3> {
               const FrictionConeModelAbstract::SharedPtr &friction_cone)
         : Contact<Vector3>(frame, DIMENSION, friction_cone) {}
 
-    Size getDimension() const override { return DIMENSION; }
-
     void computeError(const State &state, Eigen::Ref<Vector> e,
                       Eigen::Ref<Vector> dot_e) const override;
 

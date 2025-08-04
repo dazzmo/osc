@@ -4,14 +4,15 @@
 
 namespace osc {
 
-class ActuationLimit : public ActuationLimit {
+class ActuationLimit : public LimitAbstract {
    public:
     ActuationLimit(const Eigen::Ref<Vector> &lb, const Eigen::Ref<Vector> &ub)
-        : ActuationLimit(lb.size()) {
+        : LimitAbstract(lb.size()) {
         assert(lb.size() == ub.size());
     }
-    void computeLimits(const State &state, const Real &dt, Eigen::Ref<Vector> lbA,
-                       Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbx,
+    void computeLimits(const State &state, const Real &dt,
+                       Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubA,
+                       Eigen::Ref<Vector> lbx,
                        Eigen::Ref<Vector> ubx) const override {
         lbx = lb_;
         ubx = ub_;

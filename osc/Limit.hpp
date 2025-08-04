@@ -29,13 +29,14 @@ class LimitAbstract {
     virtual Size numLPConstraints() const { return m_; }
 
     virtual void toLPConstraints(const State &state, const Real &dt,
-                                Eigen::Ref<Matrix> A, Eigen::Ref<Vector> ubA,
-                                Eigen::Ref<Vector> lbA, Eigen::Ref<Vector> ubx,
-                                Eigen::Ref<Vector> lbx) const {
+                                 Eigen::Ref<Matrix> A, Eigen::Ref<Vector> lbA,
+                                 Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbx,
+                                 Eigen::Ref<Vector> ubx) const {
         computeLimits(state, dt, lbA, ubA, lbx, ubx);
         computeJacobian(state, dt, A);
 
-        // Add the gain to the limits
+        // Add the gain to the limits. Here a gain of zero will cause the bounds
+        // to expand to infinity.
         Real sigma = std::min(Real(1) / gain(), 1e9);
         lbA *= sigma;
         ubA *= sigma;

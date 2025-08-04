@@ -9,10 +9,10 @@ struct ConicData {
         : H(Matrix::Zero(nx, nx)),
           g(Vector::Zero(nx)),
           A(Matrix::Zero(nc, nx)),
-          lbA(Vector::Zero(nc)),
-          ubA(Vector::Zero(nc)),
-          lbx(Vector::Zero(nx)),
-          ubx(Vector::Zero(nx)) {}
+          lbA(Vector::Constant(nc,-1e9)),
+          ubA(Vector::Constant(nc, 1e9)),
+          lbx(Vector::Constant(nx,-1e9)),
+          ubx(Vector::Constant(nx, 1e9)) {}
 
     Matrix H;
     Vector g;

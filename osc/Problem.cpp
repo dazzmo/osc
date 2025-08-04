@@ -9,8 +9,12 @@ bool OSCProgram::computeProblemSize(const State &state) {
     Size nx = 0;
     Size nc = 0;
 
+    // Reset variable sizes
+    for (auto &sz : vsz) sz = 0;
+    for (auto &sz : csz) sz = 0;
+
     vsz[VAR_QACC] = state.nv();
-    vsz[VAR_CTRL] = state.nv();
+    vsz[VAR_CTRL] = nu_;
 
     csz[CON_DYNAMICS] = state.nv();
     for (const auto &contact : contacts_) {
@@ -46,19 +50,21 @@ bool OSCProgram::computeProblemSize(const State &state) {
     for (const auto &sz : vsz) nx += sz;
     for (const auto &sz : csz) nc += sz;
 
-    std::cout << "nx = " << nx << std::endl;
-    std::cout << "nc = " << nc << std::endl;
-
     num_variables_ = nx;
     num_constraints_ = nc;
 
-    return (nx != nx_previous) && (nc != nc_previous);
+    // Return true if the problem has changed size
+    return (nx != nx_previous) || (nc != nc_previous);
 }
 
-OSCProgram::OSCProgram(const State &state, const Size &nu) {}
+OSCProgram::OSCProgram(const State &state, const Size &nu) : nu_(nu) {}
 
 void OSCProgram::init(const State &state, const String &solver,
                       const QPSolver::Options &opts) {}
+
+void OSCProgram::addActuation(const ActuationAbstract::SharedPtr &actuation) {
+    actuations_.push_back(actuation);
+}
 
 void OSCProgram::addMotionTask(const TaskAbstract::SharedPtr &task,
                                const Real &t, const Real &duration) {
@@ -99,6 +105,19 @@ void OSCProgram::addHolonomicConstraint(
         ConstraintBinding(constraint, BindingAction::ADD, t + duration));
 }
 
+void OSCProgram::removeContact(const ContactAbstract::SharedPtr &contact,
+                               const Real &t, const Real &duration) {
+    // Locate the contact with the same frame
+    // todo - use an ID system
+    for (auto &c : contacts_) {
+        if (c.data->frame() == contact->frame()) {
+            c.action = BindingAction::REMOVE;
+            c.t_action = t + duration;
+            c.t_initial = t;
+        }
+    }
+}
+
 void OSCProgram::schedule(const Real &t) {
     // Compute the dimension of the problem
     scheduleBindings(t, motion_tasks_);
@@ -112,16 +131,22 @@ void OSCProgram::schedule(const Real &t) {
 void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     // Manage tasks and constraints
     schedule(t);
-    std::cout << "Schedule" << std::endl;
     if (computeProblemSize(state)) {
         // Create new problem with appropriate size
         conic_data_.reset();
         conic_data_ =
             std::make_unique<ConicData>(num_variables_, num_constraints_);
+        qp_solver_.reset();
+        qp_solver_ =
+            std::make_unique<QPSolver>(num_variables_, num_constraints_);
     }
-    std::cout << "Problem Size" << std::endl;
 
-    // conic_data_->setZero();
+    std::cout << "nx = " << num_variables_ << std::endl;
+    std::cout << "nc = " << num_constraints_ << std::endl;
+
+    // Create dummy bounds
+    conic_data_->lbx.setConstant(-1e9);
+    conic_data_->ubx.setConstant(1e9);
 
     // Tracking index for variables in for loops
     Index idx_v = 0;
@@ -137,7 +162,6 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
 
         task.data->addToQPObjective(state, Hi, gi);
     }
-    std::cout << "Motion tasks" << std::endl;
 
     for (const auto &task : actuation_tasks_) {
         auto Hi = conic_data_->H.block(vidx[VAR_CTRL], vidx[VAR_CTRL],
@@ -147,24 +171,36 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         task.data->addToQPObjective(state, Hi, gi);
     }
 
-    std::cout << "Actuation tasks" << std::endl;
-
     // Limits
     idx_c = 0;
     for (const auto &limit : motion_limits_) {
         const Size m = limit.data->numLPConstraints();
-        auto lbx = conic_data_->lbx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
-        auto ubx = conic_data_->ubx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
 
         auto A = conic_data_->A.block(cidx[CON_LIMITS] + idx_c, vidx[VAR_QACC],
                                       m, vsz[VAR_QACC]);
+        // Create bounds
+        Vector lbxi =
+            conic_data_->lbx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
+        Vector ubxi =
+            conic_data_->ubx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
+        Vector lbAi = conic_data_->lbA.segment(cidx[CON_LIMITS] + idx_c, m);
+        Vector ubAi = conic_data_->ubA.segment(cidx[CON_LIMITS] + idx_c, m);
+
+        limit.data->toLPConstraints(state, dt, A, lbAi, ubAi, lbxi, ubxi);
+
+        auto lbx = conic_data_->lbx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
+        auto ubx = conic_data_->ubx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
         auto lbA = conic_data_->lbA.segment(cidx[CON_LIMITS] + idx_c, m);
         auto ubA = conic_data_->ubA.segment(cidx[CON_LIMITS] + idx_c, m);
 
-        limit.data->toLPConstraints(state, dt, A, lbA, ubA, lbx, ubx);
+        // Take the appropriate bounds
+        lbA = lbA.cwiseMax(lbAi);
+        ubA = ubA.cwiseMin(ubAi);
+        lbx = lbx.cwiseMax(lbxi);
+        ubx = ubx.cwiseMin(ubxi);
+
         idx_c += m;
     }
-    std::cout << "Motion limits" << std::endl;
 
     idx_c = 0;
     for (const auto &limit : actuation_limits_) {
@@ -180,7 +216,6 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         limit.data->toLPConstraints(state, dt, A, lbA, ubA, lbx, ubx);
         idx_c += m;
     }
-    std::cout << "Actuation limits" << std::endl;
 
     // Dynamics constraint
     conic_data_->A.block(cidx[CON_DYNAMICS], vidx[VAR_QACC], csz[CON_DYNAMICS],
@@ -196,8 +231,6 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         conic_data_->A.block(cidx[CON_DYNAMICS], vidx[VAR_CTRL],
                              csz[CON_DYNAMICS], vsz[VAR_CTRL]) -= Bi;
     }
-
-    std::cout << "Dynamics" << std::endl;
 
     // Barriers
 
@@ -219,7 +252,6 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
         idx_v += n;
         idx_c += m;
     }
-    std::cout << "Constraints" << std::endl;
 
     // Contacts
     idx_v = 0;
@@ -254,16 +286,16 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
                                        vsz[VAR_QACC], vsz[VAR_QACC]);
         auto gi = conic_data_->g.segment(vidx[VAR_QACC], vsz[VAR_QACC]);
 
-        // contact.data->addToQPObjective(state, Hi, gi);
+        contact.data->addToQPObjective(state, Hi, gi);
 
         idx_c += m;
         idx_v += n;
     }
 
-    // // Solve with selected QP solver
-    // qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
-    //                   conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
-    //                   conic_data_->lbx);
+    // Solve with selected QP solver
+    qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
+                      conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
+                      conic_data_->lbx);
 }
 
 }  // namespace osc

@@ -6,8 +6,6 @@
 <robot name ="cassie">
 	<!-- Robot Link Definitions -->
 	<!--     22 linkages        -->
-	<link name="base_link">
-	</link>
 	<link name="pelvis">
 		<inertial>
 			<origin rpy="0 0 0" xyz="0.05066 0.000346 0.02841"/>
@@ -272,11 +270,6 @@
 
 	<!-- Robot Joint Definitions -->
 	<!--                         -->
-	<joint name="base_joint" type="floating">
-		<origin rpy="0 0 0" xyz="0 0 0"/>
-		<parent link="base_link"/>
-		<child link="pelvis"/>
-	</joint>
 	<joint name="LeftHipRoll" type="revolute">
 		<origin rpy="0 1.570796326794897 0" xyz="-0.049 0.135 0"/>
 		<axis xyz="0 0 1"/>
