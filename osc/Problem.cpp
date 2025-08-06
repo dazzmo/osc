@@ -57,7 +57,8 @@ bool OSCProgram::computeProblemSize(const State &state) {
     return (nx != nx_previous) || (nc != nc_previous);
 }
 
-OSCProgram::OSCProgram(const State &state, const Size &nu) : nu_(nu) {}
+OSCProgram::OSCProgram(const State &state, const Size &nu)
+    : nu_(nu), conic_data_(std::make_unique<ConicData>(0, 0)) {}
 
 void OSCProgram::init(const State &state, const String &solver,
                       const QPSolver::Options &opts) {}
@@ -108,7 +109,6 @@ void OSCProgram::addHolonomicConstraint(
 void OSCProgram::removeContact(const ContactAbstract::SharedPtr &contact,
                                const Real &t, const Real &duration) {
     // Locate the contact with the same frame
-    // todo - use an ID system
     for (auto &c : contacts_) {
         if (c.data->frame() == contact->frame()) {
             c.action = BindingAction::REMOVE;
@@ -116,6 +116,22 @@ void OSCProgram::removeContact(const ContactAbstract::SharedPtr &contact,
             c.t_initial = t;
         }
     }
+}
+
+Vector3 OSCProgram::getContactForce(
+    const ContactAbstract::SharedPtr &contact) const {
+    Vector3 f = Vector3::Zero();
+    Size idx_v = 0;
+    for (const auto &c : contacts_) {
+        if (contact->frame() == c.data->frame()) {
+            f = c.data->frictionCone()->parameterisationToForceMap() *
+                qp_solver_->getPrimalSolution().segment(
+                    vidx[VAR_CONTACT] + idx_v,
+                    c.data->frictionCone()->numParameters());
+        }
+        idx_v += c.data->frictionCone()->numParameters();
+    }
+    return f;
 }
 
 void OSCProgram::schedule(const Real &t) {
@@ -131,22 +147,19 @@ void OSCProgram::schedule(const Real &t) {
 void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     // Manage tasks and constraints
     schedule(t);
+    // Flag to indicate whether the size of the program has changed
+    bool size_change = false;
+
     if (computeProblemSize(state)) {
+        size_change = true;
         // Create new problem with appropriate size
-        conic_data_.reset();
-        conic_data_ =
-            std::make_unique<ConicData>(num_variables_, num_constraints_);
-        qp_solver_.reset();
-        qp_solver_ =
-            std::make_unique<QPSolver>(num_variables_, num_constraints_);
+        conic_data_->conservativeResize(num_variables_, num_constraints_);
     }
 
+    // Reset the conic data for the next iteration
+    conic_data_->reset();
     std::cout << "nx = " << num_variables_ << std::endl;
     std::cout << "nc = " << num_constraints_ << std::endl;
-
-    // Create dummy bounds
-    conic_data_->lbx.setConstant(-1e9);
-    conic_data_->ubx.setConstant(1e9);
 
     // Tracking index for variables in for loops
     Index idx_v = 0;
@@ -174,17 +187,16 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     // Limits
     idx_c = 0;
     for (const auto &limit : motion_limits_) {
+        const Size n = vsz[VAR_QACC];
         const Size m = limit.data->numLPConstraints();
 
         auto A = conic_data_->A.block(cidx[CON_LIMITS] + idx_c, vidx[VAR_QACC],
                                       m, vsz[VAR_QACC]);
         // Create bounds
-        Vector lbxi =
-            conic_data_->lbx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
-        Vector ubxi =
-            conic_data_->ubx.middleRows(vidx[VAR_QACC], vsz[VAR_QACC]);
-        Vector lbAi = conic_data_->lbA.segment(cidx[CON_LIMITS] + idx_c, m);
-        Vector ubAi = conic_data_->ubA.segment(cidx[CON_LIMITS] + idx_c, m);
+        Vector lbxi = Vector::Constant(n, -1e9);
+        Vector ubxi = Vector::Constant(n, 1e9);
+        Vector lbAi = Vector::Constant(m, -1e9);
+        Vector ubAi = Vector::Constant(m, 1e9);
 
         limit.data->toLPConstraints(state, dt, A, lbAi, ubAi, lbxi, ubxi);
 
@@ -293,9 +305,35 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     }
 
     // Solve with selected QP solver
-    qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
-                      conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
-                      conic_data_->lbx);
+    if (size_change) {
+        // Save current values of the program
+        Vector x0 = Vector::Zero(num_variables_);
+
+        // If a previous solver existed, use its solution
+        if (qp_solver_) {
+            Vector x = qp_solver_->getPrimalSolution();
+            // Copy elements
+            x0.segment(vidx[VAR_QACC], vsz[VAR_QACC]) =
+                x0.segment(vidx[VAR_QACC], vsz[VAR_QACC]);
+            x0.segment(vidx[VAR_CTRL], vsz[VAR_CTRL]) =
+                x0.segment(vidx[VAR_CTRL], vsz[VAR_CTRL]);
+        }
+
+        qp_solver_.reset();
+        qp_solver_ =
+            std::make_unique<QPSolver>(num_variables_, num_constraints_);
+        // Use exising solver solution to seed the new one
+        qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
+                          conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
+                          conic_data_->lbx, x0);
+
+    } else {
+        qp_solver_->solve(conic_data_->H, conic_data_->g, conic_data_->A,
+                          conic_data_->ubA, conic_data_->lbA, conic_data_->ubx,
+                          conic_data_->lbx);
+    }
+
+    size_change = false;
 }
 
 }  // namespace osc

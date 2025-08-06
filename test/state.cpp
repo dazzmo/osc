@@ -5,6 +5,7 @@
 #include "osc/OSC.hpp"
 #include "osc/Problem.hpp"
 #include "osc/contacts/Contact3D.hpp"
+#include "osc/limits/Configuration.hpp"
 #include "osc/limits/Velocity.hpp"
 #include "osc/tasks/CentreOfMass.hpp"
 #include "osc/tasks/Damping.hpp"
@@ -60,7 +61,7 @@ int main(void) {
     posture->setTarget(q0);
     auto com = std::make_shared<osc::CentreOfMassTask>();
     auto damping = std::make_shared<osc::DampingTask>(state);
-    auto limit = std::make_shared<osc::VelocityLimit>(state);
+    auto limit = std::make_shared<osc::ConfigurationLimit>(state);
 
     auto friction_model = std::make_shared<osc::LinearisedFrictionConeModel>(4);
     auto contact =
@@ -72,7 +73,6 @@ int main(void) {
     problem.addMotionTask(posture, 0.0, 0.1);
     problem.addMotionTask(com, 0.0, 0.1);
     problem.addMotionTask(damping, 0.0, 0.1);
-    problem.addMotionLimit(limit, 0.0, 0.1);
     problem.addContact(contact, 0.0, 0.01);
 
     bool remove = false;
@@ -87,6 +87,7 @@ int main(void) {
         auto t2 = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> d = t2 - t1;
         std::cout << d.count() << std::endl;
+        std::cout << "f = " << problem.getContactForce(contact).transpose() << std::endl;
     }
 
     return 0;

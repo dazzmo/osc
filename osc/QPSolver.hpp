@@ -44,7 +44,7 @@ class QPSolver {
 
     QPSolver(const Size &nx, const Size &nc,
              const std::string &solver = "qpoases", const Options &opts = {});
-             
+
     void solve(const Eigen::Ref<const Matrix> &H,
                const Eigen::Ref<const Vector> &g,
                const Eigen::Ref<const Matrix> &A,
@@ -52,6 +52,15 @@ class QPSolver {
                const Eigen::Ref<const Vector> &lbA,
                const Eigen::Ref<const Vector> &ubx,
                const Eigen::Ref<const Vector> &lbx);
+
+    void solve(const Eigen::Ref<const Matrix> &H,
+               const Eigen::Ref<const Vector> &g,
+               const Eigen::Ref<const Matrix> &A,
+               const Eigen::Ref<const Vector> &ubA,
+               const Eigen::Ref<const Vector> &lbA,
+               const Eigen::Ref<const Vector> &ubx,
+               const Eigen::Ref<const Vector> &lbx,
+               const Eigen::Ref<const Vector> &x0);
 
     Real getObjective() const { return out_.f; }
     Vector getPrimalSolution() const { return out_.x; }
@@ -65,4 +74,4 @@ class QPSolver {
     casadi::Function qp_;
     casadi::Function conic_f_;
 };
-}  // namespace ik
+}  // namespace osc

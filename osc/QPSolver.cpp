@@ -42,4 +42,32 @@ void QPSolver::solve(const Eigen::Ref<const Matrix> &H,
     conic_f_(w, res);
 }
 
+void QPSolver::solve(
+    const Eigen::Ref<const Matrix> &H, const Eigen::Ref<const Vector> &g,
+    const Eigen::Ref<const Matrix> &A, const Eigen::Ref<const Vector> &ubA,
+    const Eigen::Ref<const Vector> &lbA, const Eigen::Ref<const Vector> &ubx,
+    const Eigen::Ref<const Vector> &lbx, const Eigen::Ref<const Vector> &x0) {
+    std::vector<const double *> w(casadi::CONIC_NUM_IN);
+
+    w[casadi::CONIC_H] = H.data();
+    w[casadi::CONIC_G] = g.data();
+    w[casadi::CONIC_A] = A.data();
+    w[casadi::CONIC_Q] = nullptr;
+    w[casadi::CONIC_P] = nullptr;
+    w[casadi::CONIC_LBX] = lbx.data();
+    w[casadi::CONIC_UBX] = ubx.data();
+    w[casadi::CONIC_LBA] = lbA.data();
+    w[casadi::CONIC_UBA] = ubA.data();
+    w[casadi::CONIC_X0] = x0.data();
+    w[casadi::CONIC_LAM_X0] = nullptr;
+    w[casadi::CONIC_LAM_A0] = nullptr;
+
+    std::vector<Real *> res(casadi::CONIC_NUM_OUT);
+    res[casadi::CONIC_COST] = &out_.f;
+    res[casadi::CONIC_X] = out_.x.data();
+    res[casadi::CONIC_LAM_A] = out_.lambda.data();
+
+    conic_f_(w, res);
+}
+
 }  // namespace osc

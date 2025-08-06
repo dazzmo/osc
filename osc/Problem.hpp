@@ -137,6 +137,8 @@ class OSCProgram {
     void removeContact(const ContactAbstract::SharedPtr &contact, const Real &t,
                        const Real &duration = 0);
 
+    Vector3 getContactForce(const ContactAbstract::SharedPtr &contact) const;
+
     template <typename Binding>
     void scheduleBindings(const Real &t, std::vector<Binding> &bindings) {
         for (auto it = bindings.begin(); it != bindings.end();) {
@@ -183,10 +185,15 @@ class OSCProgram {
    private:
     /// @brief Number of inputs
     Size nu_;
+
+    /// @brief Vector of motion tasks
     std::vector<TaskBinding> motion_tasks_;
+    /// @brief Vector of actuation tasks
     std::vector<TaskBinding> actuation_tasks_;
 
+    /// @brief Vector of motion limits
     std::vector<LimitBinding> motion_limits_;
+    /// @brief Vector of actuation limits
     std::vector<LimitBinding> actuation_limits_;
 
     std::vector<ContactBinding> contacts_;
@@ -197,6 +204,7 @@ class OSCProgram {
 
     std::unique_ptr<ConicData> conic_data_;
     std::unique_ptr<QPSolver> qp_solver_;
+
 };
 
 }  // namespace osc
