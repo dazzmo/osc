@@ -44,6 +44,7 @@ SE3 State::getTransformFrameToWorld(const String &frame) const {
 
 const State::Matrix6x &State::computeJointJacobian(
     const pinocchio::JointIndex &index) const {
+    jacobian_.setZero();
     pinocchio::computeJointJacobian(model_, *data_, q_, index, jacobian_);
     return jacobian_;
 }
@@ -51,6 +52,7 @@ const State::Matrix6x &State::computeJointJacobian(
 const State::Matrix6x &State::computeFrameJacobian(
     const pinocchio::FrameIndex &index,
     const pinocchio::ReferenceFrame &reference_frame) const {
+    jacobian_.setZero();
     pinocchio::computeFrameJacobian(model_, *data_, q_, index, reference_frame,
                                     jacobian_);
     return jacobian_;

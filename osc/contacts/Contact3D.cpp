@@ -5,7 +5,10 @@ namespace osc {
 void Contact3D::computeError(const State &state, Eigen::Ref<Vector> e,
                              Eigen::Ref<Vector> dot_e) const {
     e = state.getTransformFrameToWorld(frame()).translation() - getTarget();
-    dot_e = -state.getFrameVelocity(state.getFrameIndex(frame())).linear();
+    std::cout << "x (actual) = " << state.getTransformFrameToWorld(frame()).translation() << std::endl;
+    std::cout << "x (target) = " << getTarget() << std::endl;
+    
+    dot_e = state.getFrameVelocity(state.getFrameIndex(frame())).linear();
 }
 
 void Contact3D::computeJacobian(const State &state,

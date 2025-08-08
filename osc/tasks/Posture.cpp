@@ -1,5 +1,7 @@
 #include "osc/tasks/Posture.hpp"
 
+#include <pinocchio/algorithm/joint-configuration.hpp>
+
 namespace osc {
 
 PostureTask::PostureTask(const State &state) : Task<Vector>(state.nv()) {}

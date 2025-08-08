@@ -17,6 +17,9 @@ void FrameTask::computeError(const State &state, Eigen::Ref<Vector> e,
     const auto fMt = oMf.actInv(oMt);
     e = pinocchio::log6(fMt).toVector();
 
+    std::cout << "oMf (actual) = " << oMf << std::endl;
+    std::cout << "oMf (target) = " << oMt << std::endl;
+    
     // Compute the rate of error
     dot_e = (state.getFrameVelocity(state.getFrameIndex(frame())) -
              getTarget().velocity)

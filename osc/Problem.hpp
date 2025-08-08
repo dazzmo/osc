@@ -16,195 +16,196 @@ namespace osc {
  *
  */
 class OSCProgram {
-   private:
-    enum OSCVariables {
-        /// @brief Generalised accelerations
-        VAR_QACC = 0,
-        /// @brief Control inputs
-        VAR_CTRL,
-        /// @brief Contact force variables
-        VAR_CONTACT,
-        /// @brief Holonomic virtual forces
-        VAR_HOLONOMIC,
-        NUM_VARIABLES
-    };
+ private:
+  enum OSCVariables {
+    /// @brief Generalised accelerations
+    VAR_QACC = 0,
+    /// @brief Control inputs
+    VAR_CTRL,
+    /// @brief Contact force variables
+    VAR_CONTACT,
+    /// @brief Holonomic virtual forces
+    VAR_HOLONOMIC,
+    NUM_VARIABLES
+  };
 
-    enum OSCConstraints {
-        CON_DYNAMICS = 0,
-        CON_FRICTION,
-        CON_LIMITS,
-        CON_HOLONOMIC,
-        NUM_CONSTRAINTS
-    };
+  enum OSCConstraints {
+    CON_DYNAMICS = 0,
+    CON_FRICTION,
+    CON_LIMITS,
+    CON_HOLONOMIC,
+    NUM_CONSTRAINTS
+  };
 
-    /// @brief Starting index of each variable
-    std::array<Index, NUM_VARIABLES> vidx = {};
-    /// @brief Sizes of each variable
-    std::array<Size, NUM_VARIABLES> vsz = {};
+  /// @brief Starting index of each variable
+  std::array<Index, NUM_VARIABLES> vidx = {};
+  /// @brief Sizes of each variable
+  std::array<Size, NUM_VARIABLES> vsz = {};
 
-    /// @brief Starting index of each constraint
-    std::array<Index, NUM_CONSTRAINTS> cidx = {};
-    /// @brief Sizes of each constraint
-    std::array<Size, NUM_CONSTRAINTS> csz = {};
+  /// @brief Starting index of each constraint
+  std::array<Index, NUM_CONSTRAINTS> cidx = {};
+  /// @brief Sizes of each constraint
+  std::array<Size, NUM_CONSTRAINTS> csz = {};
 
-    Size num_variables_ = 0;
-    Size num_constraints_ = 0;
+  Size num_variables_ = 0;
+  Size num_constraints_ = 0;
 
-    enum class BindingAction { NONE, ADD, REMOVE };
+  enum class BindingAction { NONE, ADD, REMOVE };
 
-    template <typename T>
-    struct Binding {
-        Binding(const T &data, const BindingAction &action,
-                const Real &t_action)
-            : data(data), action(action), t_action(t_action) {}
+  template <typename T>
+  struct Binding {
+    Binding(const T &data, const BindingAction &action, const Real &t_action)
+        : data(data), action(action), t_action(t_action) {}
 
-        /// @brief Data of the binding
-        T data;
-        /// @brief Action to perform when t_action occurs
-        BindingAction action;
-        /// @brief Time at which binding was created [s]
-        Real t_initial;
-        /// @brief Time at which the action should occur [s]
-        Real t_action;
-    };
+    /// @brief Data of the binding
+    T data;
+    /// @brief Action to perform when t_action occurs
+    BindingAction action;
+    /// @brief Time at which binding was created [s]
+    Real t_initial;
+    /// @brief Time at which the action should occur [s]
+    Real t_action;
+  };
 
-    using TaskBinding = Binding<TaskAbstract::SharedPtr>;
-    using LimitBinding = Binding<LimitAbstract::SharedPtr>;
+  using TaskBinding = Binding<TaskAbstract::SharedPtr>;
+  using LimitBinding = Binding<LimitAbstract::SharedPtr>;
 
-    using ConstraintBinding = Binding<ConstraintAbstract::SharedPtr>;
-    using ContactBinding = Binding<ContactAbstract::SharedPtr>;
+  using ConstraintBinding = Binding<ConstraintAbstract::SharedPtr>;
+  using ContactBinding = Binding<ContactAbstract::SharedPtr>;
 
-    /**
-     * @brief Computes the size of the program based on the given state, tasks
-     * and constraints. Returns true if the program has changed size since the
-     * last time this function was called.
-     *
-     * @param state
-     * @return true
-     * @return false
-     */
-    bool computeProblemSize(const State &state);
+  /**
+   * @brief Computes the size of the program based on the given state, tasks
+   * and constraints. Returns true if the program has changed size since the
+   * last time this function was called.
+   *
+   * @param state
+   * @return true
+   * @return false
+   */
+  bool computeProblemSize(const State &state);
 
-   public:
-    OSCProgram(const State &state, const Size &nu);
+ public:
+  OSCProgram(const State &state, const Size &nu);
 
-    void init(const State &state, const String &solver = "qpoases",
-              const QPSolver::Options &opts = {});
+  void init(const State &state, const String &solver = "qpoases",
+            const QPSolver::Options &opts = {});
 
-    /**
-     * @brief A
-     *
-     * @param actuation
-     */
-    void addActuation(const ActuationAbstract::SharedPtr &actuation);
+  /**
+   * @brief A
+   *
+   * @param actuation
+   */
+  void addActuation(const ActuationAbstract::SharedPtr &actuation);
 
-    /**
-     * @brief Add a motion task to the problem that can be represented in the
-     * form
-     * \ddot{x} = J \ddot{q} + \dot{J} \dot{q}
-     *
-     * @param task
-     * @param t
-     * @param duration
-     */
-    void addMotionTask(const TaskAbstract::SharedPtr &task, const Real &t,
-                       const Real &duration = 0);
+  /**
+   * @brief Add a motion task to the problem that can be represented in the
+   * form
+   * \ddot{x} = J \ddot{q} + \dot{J} \dot{q}
+   *
+   * @param task
+   * @param t
+   * @param duration
+   */
+  void addMotionTask(const TaskAbstract::SharedPtr &task, const Real &t,
+                     const Real &duration = 0);
 
-    /**
-     * @brief Add an actuation task to the problem that can be represented in
-     * the form
-     * \ddot{x} = J \ddot{u} + \dot{J} \dot{u}
-     *
-     * @param task
-     * @param t
-     * @param duration
-     */
-    void addActuationTask(const TaskAbstract::SharedPtr &task, const Real &t,
-                          const Real &duration = 0);
-
-    void addContact(const ContactAbstract::SharedPtr &contact, const Real &t,
-                    const Real &duration = 0);
-
-    void addMotionLimit(const LimitAbstract::SharedPtr &limit, const Real &t,
+  /**
+   * @brief Add an actuation task to the problem that can be represented in
+   * the form
+   * \ddot{x} = J \ddot{u} + \dot{J} \dot{u}
+   *
+   * @param task
+   * @param t
+   * @param duration
+   */
+  void addActuationTask(const TaskAbstract::SharedPtr &task, const Real &t,
                         const Real &duration = 0);
 
-    void addActuationLimit(const LimitAbstract::SharedPtr &limit, const Real &t,
-                           const Real &duration = 0);
+  void addContact(const ContactAbstract::SharedPtr &contact, const Real &t,
+                  const Real &duration = 0);
 
-    void addHolonomicConstraint(const ConstraintAbstract::SharedPtr &constraint,
-                                const Real &t, const Real &duration = 0);
+  void addMotionLimit(const LimitAbstract::SharedPtr &limit, const Real &t,
+                      const Real &duration = 0);
 
-    void removeContact(const ContactAbstract::SharedPtr &contact, const Real &t,
-                       const Real &duration = 0);
+  void addActuationLimit(const LimitAbstract::SharedPtr &limit, const Real &t,
+                         const Real &duration = 0);
 
-    Vector3 getContactForce(const ContactAbstract::SharedPtr &contact) const;
+  void addHolonomicConstraint(const ConstraintAbstract::SharedPtr &constraint,
+                              const Real &t, const Real &duration = 0);
 
-    template <typename Binding>
-    void scheduleBindings(const Real &t, std::vector<Binding> &bindings) {
-        for (auto it = bindings.begin(); it != bindings.end();) {
-            // Loop through task bindings
-            if (it->action == BindingAction::NONE) {
-                // Evaluate the task as normal
-            }
+  void removeContact(const ContactAbstract::SharedPtr &contact, const Real &t,
+                     const Real &duration = 0);
 
-            if (it->action == BindingAction::ADD) {
-                if (t >= it->t_action) {
-                    // Add task at full strength
-                    it->action = BindingAction::NONE;
-                } else {
-                    // Introduce the task/constraint at a linear rate
-                    const Real &t0 = it->t_initial;
-                    const Real &ta = it->t_action;
+  Vector3 getContactForce(const ContactAbstract::SharedPtr &contact) const;
 
-                    const Real tau = std::max(0.0, (t - t0) / (ta - t0));
-                    it->data->setGain(tau);
-                }
-            }
+  Vector getInput() const;
+  Vector getAcceleration() const;
 
-            if (it->action == BindingAction::REMOVE) {
-                if (t >= it->t_action) {
-                    // Remove the it
-                    it = bindings.erase(it);
-                    continue;
-                } else {
-                    // Reduce the task/constraint at a linear rate
-                    const Real &t0 = it->t_initial;
-                    const Real &ta = it->t_action;
-                    const Real tau = (t - t0) / (ta - t0);
-                    it->data->setGain(1.0 - tau);
-                }
-            }
+  template <typename Binding>
+  void scheduleBindings(const Real &t, std::vector<Binding> &bindings) {
+    for (auto it = bindings.begin(); it != bindings.end();) {
+      // Loop through task bindings
+      if (it->action == BindingAction::NONE) {
+        // Evaluate the task as normal
+      }
 
-            ++it;
+      if (it->action == BindingAction::ADD) {
+        if (t >= it->t_action) {
+          // Add task at full strength
+          it->action = BindingAction::NONE;
+        } else {
+          // Introduce the task/constraint at a linear rate
+          const Real &t0 = it->t_initial;
+          const Real &ta = it->t_action;
+
+          const Real tau = std::max(0.0, (t - t0) / (ta - t0));
+          it->data->setGain(tau);
         }
+      }
+
+      if (it->action == BindingAction::REMOVE) {
+        if (t >= it->t_action) {
+          // Remove the it
+          it = bindings.erase(it);
+          continue;
+        } else {
+          // Reduce the task/constraint at a linear rate
+          const Real &t0 = it->t_initial;
+          const Real &ta = it->t_action;
+          const Real tau = (t - t0) / (ta - t0);
+          it->data->setGain(1.0 - tau);
+        }
+      }
+
+      ++it;
     }
+  }
 
-    void schedule(const Real &t);
-    void solve(const Real &t, const State &state, const Real &dt);
+  void schedule(const Real &t);
+  void solve(const Real &t, const State &state, const Real &dt);
 
-   private:
-    /// @brief Number of inputs
-    Size nu_;
+ private:
+  /// @brief Number of inputs
+  Size nu_;
 
-    /// @brief Vector of motion tasks
-    std::vector<TaskBinding> motion_tasks_;
-    /// @brief Vector of actuation tasks
-    std::vector<TaskBinding> actuation_tasks_;
+  /// @brief Vector of motion tasks
+  std::vector<TaskBinding> motion_tasks_;
+  /// @brief Vector of actuation tasks
+  std::vector<TaskBinding> actuation_tasks_;
 
-    /// @brief Vector of motion limits
-    std::vector<LimitBinding> motion_limits_;
-    /// @brief Vector of actuation limits
-    std::vector<LimitBinding> actuation_limits_;
+  /// @brief Vector of motion limits
+  std::vector<LimitBinding> motion_limits_;
+  /// @brief Vector of actuation limits
+  std::vector<LimitBinding> actuation_limits_;
 
-    std::vector<ContactBinding> contacts_;
+  std::vector<ContactBinding> contacts_;
 
-    std::vector<ConstraintBinding> constraints_;
+  std::vector<ConstraintBinding> constraints_;
 
-    std::vector<ActuationAbstract::SharedPtr> actuations_;
+  std::vector<ActuationAbstract::SharedPtr> actuations_;
 
-    std::unique_ptr<ConicData> conic_data_;
-    std::unique_ptr<QPSolver> qp_solver_;
-
+  std::unique_ptr<ConicData> conic_data_;
+  std::unique_ptr<QPSolver> qp_solver_;
 };
 
 }  // namespace osc

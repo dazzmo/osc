@@ -30,6 +30,18 @@ class FrameTask : public Task<FrameTarget> {
    public:
     FrameTask(const String &frame);
 
+    void setPositionCost(const Real &cost) {
+        Vector w = this->weighting();
+        w.topRows<3>().setConstant(cost);
+        this->setWeighting(w);
+    }
+
+    void setOrientationCost(const Real &cost) {
+        Vector w = this->weighting();
+        w.bottomRows<3>().setConstant(cost);
+        this->setWeighting(w);
+    }
+
     const String &frame() const { return frame_; }
 
     void setTargetFromState(const State &state) {
