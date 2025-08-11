@@ -49,6 +49,13 @@ void QPSolver::solve(
     const Eigen::Ref<const Vector> &lbx, const Eigen::Ref<const Vector> &x0) {
     std::vector<const double *> w(casadi::CONIC_NUM_IN);
 
+    std::cout << "H = " << H << std::endl;
+    std::cout << "A = " << A << std::endl;
+    std::cout << "ubA = " << ubA << std::endl;
+    std::cout << "lbA = " << lbA << std::endl;
+    std::cout << "ubx = " << ubx << std::endl;
+    std::cout << "lbx = " << lbx << std::endl;
+
     w[casadi::CONIC_H] = H.data();
     w[casadi::CONIC_G] = g.data();
     w[casadi::CONIC_A] = A.data();
@@ -71,3 +78,4 @@ void QPSolver::solve(
 }
 
 }  // namespace osc
+ 

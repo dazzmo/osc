@@ -91,7 +91,7 @@ class TaskAbstract {
   Vector computeDesiredAcceleration(const Eigen::Ref<Vector> &e,
                                     const Eigen::Ref<Vector> &dot_e) const {
     // todo - plus desired xacc
-    return -(Kp_.asDiagonal() * e + Kd_.asDiagonal() * dot_e);
+    return (Kp_.asDiagonal() * e + Kd_.asDiagonal() * dot_e);
   }
 
  protected:

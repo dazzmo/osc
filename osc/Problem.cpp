@@ -45,7 +45,7 @@ bool OSCProgram::computeProblemSize(const State &state) {
   cidx[CON_DYNAMICS] = 0;
   cidx[CON_FRICTION] = cidx[CON_DYNAMICS] + csz[CON_DYNAMICS];
   cidx[CON_LIMITS] = cidx[CON_FRICTION] + csz[CON_FRICTION];
-  cidx[VAR_HOLONOMIC] = cidx[VAR_HOLONOMIC] + csz[CON_LIMITS];
+  cidx[VAR_HOLONOMIC] = cidx[CON_LIMITS] + csz[CON_LIMITS];
 
   for (const auto &sz : vsz) nx += sz;
   for (const auto &sz : csz) nc += sz;
@@ -219,16 +219,30 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
 
   idx_c = 0;
   for (const auto &limit : actuation_limits_) {
+    const Size n = vsz[VAR_CTRL];
     const Size m = limit.data->numLPConstraints();
-    auto lbx = conic_data_->lbx.middleRows(vidx[VAR_CTRL], vsz[VAR_CTRL]);
-    auto ubx = conic_data_->ubx.middleRows(vidx[VAR_CTRL], vsz[VAR_CTRL]);
 
     auto A = conic_data_->A.block(cidx[CON_LIMITS] + idx_c, vidx[VAR_CTRL], m,
                                   vsz[VAR_CTRL]);
+    // Create bounds
+    Vector lbxi = Vector::Constant(n, -1e9);
+    Vector ubxi = Vector::Constant(n, 1e9);
+    Vector lbAi = Vector::Constant(m, -1e9);
+    Vector ubAi = Vector::Constant(m, 1e9);
+
+    limit.data->toLPConstraints(state, dt, A, lbAi, ubAi, lbxi, ubxi);
+
+    auto lbx = conic_data_->lbx.middleRows(vidx[VAR_CTRL], vsz[VAR_CTRL]);
+    auto ubx = conic_data_->ubx.middleRows(vidx[VAR_CTRL], vsz[VAR_CTRL]);
     auto lbA = conic_data_->lbA.segment(cidx[CON_LIMITS] + idx_c, m);
     auto ubA = conic_data_->ubA.segment(cidx[CON_LIMITS] + idx_c, m);
 
-    limit.data->toLPConstraints(state, dt, A, lbA, ubA, lbx, ubx);
+    // Take the appropriate bounds
+    lbA = lbA.cwiseMax(lbAi);
+    ubA = ubA.cwiseMin(ubAi);
+    lbx = lbx.cwiseMax(lbxi);
+    ubx = ubx.cwiseMin(ubxi);
+
     idx_c += m;
   }
 
@@ -283,14 +297,22 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     const Size n = contact.data->frictionCone()->numParameters();
     const Size m = contact.data->frictionCone()->numLPConstraints();
 
+    std::cout << "n = " << n << std::endl;
+    std::cout << "m = " << m << std::endl;
+
     // Dynamics
     Eigen::Ref<Matrix> A = conic_data_->A.block(
         cidx[CON_DYNAMICS], vidx[VAR_CONTACT] + idx_v, csz[CON_DYNAMICS], n);
     Matrix J(contact.data->getDimension(), state.nv());
-    contact.data->computeContactJacobian(state, J);
+    J.setZero();
+    contact.data->computeJacobian(state, J);
     J = contact.data->frictionCone()->parameterisationToForceMap().transpose() *
         J;
     A -= J.transpose();
+
+    std::cout << "i = " << cidx[CON_DYNAMICS] << std::endl;
+    std::cout << "j = " << vidx[VAR_CONTACT] + idx_v << std::endl;
+    std::cout << "A = " << A << std::endl;
 
     // Friction cones
     Eigen::Ref<Matrix> Af = conic_data_->A.block(
@@ -300,6 +322,12 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     auto lbx = conic_data_->lbx.segment(vidx[VAR_CONTACT] + idx_v, n);
     auto ubx = conic_data_->ubx.segment(vidx[VAR_CONTACT] + idx_v, n);
     contact.data->frictionCone()->toLPConstraints(Af, lbA, ubA, lbx, ubx);
+
+    std::cout << "Af = " << Af << std::endl;
+    std::cout << "lbA = " << lbA << std::endl;
+    std::cout << "ubA = " << ubA << std::endl;
+    std::cout << "lbx = " << lbx << std::endl;
+    std::cout << "ubx = " << ubx << std::endl;
 
     // Objective
     auto Hi = conic_data_->H.block(vidx[VAR_QACC], vidx[VAR_QACC],
@@ -311,6 +339,10 @@ void OSCProgram::solve(const Real &t, const State &state, const Real &dt) {
     idx_c += m;
     idx_v += n;
   }
+
+  // Regularisation
+  conic_data_->H.diagonal().array() += 1e0;  // fixme
+  // todo - add lm damping
 
   // Solve with selected QP solver
   if (size_change) {

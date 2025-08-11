@@ -15,8 +15,6 @@ ENDIF()
 # Add osc library
 add_subdirectory(osc)
 
-
-
 option(BUILD_TESTS "Build osc with tests" OFF)
 if(BUILD_TESTS)
   add_subdirectory(test)

@@ -45,7 +45,7 @@ class FrictionConeModelAbstract {
     ~FrictionConeModelAbstract() = default;
 
    private:
-    Real mu_;
+    Real mu_{1.0};
 };
 
 class LinearisedFrictionConeModel : public FrictionConeModelAbstract {
@@ -67,13 +67,13 @@ class LinearisedFrictionConeModel : public FrictionConeModelAbstract {
         // Unilaterality
         lbx[2] = 0.0;
         // fixme - Add a define
-        ubx[2] = 1e9;
+        ubx[2] = 1e4;
         // Edges
         Real theta = 0;
         for (Size i = 0; i < n_; ++i) {
             A.row(i) << cos(theta), sin(theta), -getCoefficient() / sqrt(2.0);
-            lbA(i) = -1e9;
-            ubA(i) = Real(0);
+            lbA(i) = -1e4;
+            ubA(i) = Real(0.0);
             theta += 2 * M_PI / n_;
         }
     }
@@ -109,7 +109,7 @@ class LinearisedFrictionConeGeneratorModel : public FrictionConeModelAbstract {
                          Eigen::Ref<Vector> ubA, Eigen::Ref<Vector> lbx,
                          Eigen::Ref<Vector> ubx) const override {
         lbx.setZero();
-        ubx.setConstant(1e9);
+        ubx.setConstant(1e4);
     }
 
     /**

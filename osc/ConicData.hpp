@@ -9,10 +9,10 @@ struct ConicData {
         : H(Matrix::Zero(nx, nx)),
           g(Vector::Zero(nx)),
           A(Matrix::Zero(nc, nx)),
-          lbA(Vector::Constant(nc, -1e9)),
-          ubA(Vector::Constant(nc, 1e9)),
-          lbx(Vector::Constant(nx, -1e9)),
-          ubx(Vector::Constant(nx, 1e9)) {}
+          lbA(Vector::Constant(nc, -1e4)),
+          ubA(Vector::Constant(nc, 1e4)),
+          lbx(Vector::Constant(nx, -1e4)),
+          ubx(Vector::Constant(nx, 1e4)) {}
 
     void conservativeResize(const Size &nx, const Size &nc) {
         H.conservativeResize(nx, nx);
@@ -28,10 +28,10 @@ struct ConicData {
         H.setZero();
         g.setZero();
         A.setZero();
-        lbA.setConstant(-1e9);
-        ubA.setConstant(1e9);
-        lbx.setConstant(-1e9);
-        ubx.setConstant(1e9);
+        lbA.setConstant(-1e4);
+        ubA.setConstant(1e4);
+        lbx.setConstant(-1e4);
+        ubx.setConstant(1e4);
     }
 
     Matrix H;

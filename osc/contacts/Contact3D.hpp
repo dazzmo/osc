@@ -4,28 +4,26 @@
 namespace osc {
 
 class Contact3D : public Contact<Vector3> {
-    static constexpr int DIMENSION = 3;
+  static constexpr int DIMENSION = 3;
 
-   public:
-    Contact3D(const String &frame,
-              const FrictionConeModelAbstract::SharedPtr &friction_cone)
-        : Contact<Vector3>(frame, DIMENSION, friction_cone) {}
+ public:
+  Contact3D(const String &frame,
+            const FrictionConeModelAbstract::SharedPtr &friction_cone,
+            const SE3 &fMc = SE3::Identity())
+      : Contact<Vector3>(frame, DIMENSION, friction_cone, fMc) {}
 
-    void computeError(const State &state, Eigen::Ref<Vector> e,
-                      Eigen::Ref<Vector> dot_e) const override;
+  void computeError(const State &state, Eigen::Ref<Vector> e,
+                    Eigen::Ref<Vector> dot_e) const override;
 
-    void computeJacobian(const State &state,
-                         Eigen::Ref<Matrix> jacobian) const override;
+  void computeJacobian(const State &state,
+                       Eigen::Ref<Matrix> jacobian) const override;
 
-    void computeAccelerationBias(const State &state,
-                                 Eigen::Ref<Vector> bias) const override;
+  void computeAccelerationBias(const State &state,
+                               Eigen::Ref<Vector> bias) const override;
 
-    void computeContactJacobian(const State &state,
-                                Eigen::Ref<Matrix> jacobian) const override;
+  void setTargetFromState(const State &state);
 
-    void setTargetFromState(const State &state);
-
-   private:
+ private:
 };
 
 }  // namespace osc
